@@ -4,8 +4,8 @@
 DSS_Laptop_System/ 
 │ 
 ├── data/                       <-- (Nơi chứa dữ liệu - TV1 quản lý) 
-│   ├── raw_data.csv            # File gốc 30 cột ban đầu chưa đụng chạm 
-│   └── clean_data.csv          # File 6 cột số chuẩn hóa (Output của TV1) 
+│   ├── laptops_raw_data.csv            # File gốc 30 cột ban đầu chưa đụng chạm 
+│   └── laptops_clean_data.csv          # File 6 cột số chuẩn hóa (Output của TV1) 
 │ 
 ├── modules/                    <-- (Nơi chứa các hàm xử lý độc lập) 
 │   ├── __init__.py             # File rỗng (để Python hiểu đây là thư mục code) 
