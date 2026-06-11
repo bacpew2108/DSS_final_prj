@@ -11,44 +11,52 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Import `parse_ram_gb` from modules; if package import fails, load module by path.
-try:
-    from modules.data_processing import parse_ram_gb
-except Exception:
-    # If the project's modules/data_processing.py is missing, provide a simple
-    # fallback implementation of `parse_ram_gb` so the cleaner can still run.
-    try:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location('data_processing', str(ROOT / 'modules' / 'data_processing.py'))
-        dp = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(dp)
-        parse_ram_gb = getattr(dp, 'parse_ram_gb')
-    except Exception:
-        def parse_ram_gb(s):
-            if s is None:
-                return None
-            txt = str(s).lower().replace(',', ' ')
-            # patterns like '2 x 8 GB' or '2x8GB'
-            m = re.findall(r"(\d+)\s*[x×]\s*(\d+)\s*gb", txt)
-            if m:
-                try:
-                    return sum(int(mult) * int(size) for mult, size in m)
-                except Exception:
-                    pass
-            # all occurrences of numbers followed by 'gb'
-            nums = re.findall(r"(\d+)\s*gb", txt)
-            if nums:
-                try:
-                    return sum(int(n) for n in nums)
-                except Exception:
-                    pass
-            # fallback: any standalone reasonable number (2-1024)
-            nums2 = re.findall(r"(\d+)", txt)
-            for n in nums2:
-                v = int(n)
-                if 2 <= v <= 1024:
-                    return v
-            return None
+
+def parse_ram_gb(s):
+    """Parse a RAM description string and return total capacity in GB (int) or None.
+
+    Hỗ trợ các dạng:
+    - 'N x M GB' / 'NxMGB'   → N * M  (e.g. '2x8GB' → 16)
+    - 'M GB * N'              → M * N  (e.g. '48GB*2' → 96)
+    - 'X GB'                  → X      (lấy số GB đầu tiên — tổng thường ghi trước)
+    - Trùng lặp cùng pattern  → deduplicate trước khi tính
+    """
+    if s is None:
+        return None
+    txt = str(s).lower().replace(',', ' ')
+
+    # Bước 1: N×M GB (e.g. '2 x 8 GB', '2x8GB', '1x16GB')
+    m1 = re.findall(r"(\d+)\s*[x×]\s*(\d+)\s*gb", txt)
+    if m1:
+        unique = list(dict.fromkeys(m1))   # bỏ trùng lặp, giữ thứ tự
+        try:
+            return sum(int(mult) * int(size) for mult, size in unique)
+        except Exception:
+            pass
+
+    # Bước 2: M GB * N (size trước, multiplier sau — e.g. '48GB*2', '8GB*2')
+    m2 = re.findall(r"(\d+)\s*gb\s*\*\s*(\d+)", txt)
+    if m2:
+        unique = list(dict.fromkeys(m2))
+        try:
+            return sum(int(size) * int(mult) for size, mult in unique)
+        except Exception:
+            pass
+
+    # Bước 3: lấy số GB đầu tiên (tổng tổng thường được ghi trước)
+    nums = re.findall(r"(\d+)\s*gb", txt)
+    if nums:
+        try:
+            return int(nums[0])
+        except Exception:
+            pass
+
+    # Fallback: số hợp lý đầu tiên trong khoảng 2–1024
+    for n in re.findall(r"(\d+)", txt):
+        v = int(n)
+        if 2 <= v <= 1024:
+            return v
+    return None
 
 
 def normalize_col_name(name: str) -> str:
@@ -333,28 +341,33 @@ def parse_weight_kg(s):
 
 
 def compute_weight(df):
-    # parse weight into kg floats
-    df['weight'] = df.get('weight', pd.Series()).apply(lambda x: parse_weight_kg(x) if pd.notna(x) else None)
-    # compute mean of parsed weights
-    # Temporarily disable filling missing weights with the mean as requested.
-    # try:
-    #     mean_val = float(df['weight'].dropna().astype(float).mean())
-    # except Exception:
-    #     mean_val = None
-    # if mean_val is None or pd.isna(mean_val):
-    #     # if no valid weights, leave as-is
-    #     return df
-    # # fill missing or unparsable with mean
-    # df['weight'] = df['weight'].fillna(mean_val)
-    # round to 1 decimal place for existing values
+    # Parse weight into kg floats first; keep blanks as missing for imputation.
+    df['weight'] = df.get('weight', pd.Series()).apply(
+        lambda x: parse_weight_kg(x) if pd.notna(x) and str(x).strip() else None
+    )
 
-    # drop rows where weight is blank/unparsable
-    df = df.dropna(subset=['weight']).copy()
+    if 'product_name' in df.columns:
+        product_median = df.groupby('product_name')['weight'].transform(
+            lambda s: float(s.dropna().median()) if not s.dropna().empty else None
+        )
+        df['weight'] = df['weight'].fillna(product_median)
+
+    if 'brand' in df.columns:
+        brand_median = df.groupby('brand')['weight'].transform(
+            lambda s: float(s.dropna().median()) if not s.dropna().empty else None
+        )
+        df['weight'] = df['weight'].fillna(brand_median)
 
     try:
-        df['weight'] = df['weight'].astype(float).round(1)
+        overall_median = float(df['weight'].dropna().astype(float).median())
     except Exception:
-        pass
+        overall_median = None
+
+    if overall_median is not None and not pd.isna(overall_median):
+        df['weight'] = df['weight'].fillna(overall_median)
+
+    # If anything is still missing, leave it explicitly marked as Unknown.
+    df['weight'] = df['weight'].apply(lambda x: round(float(x), 1) if pd.notna(x) else 'Unknown')
     return df
 
 
@@ -426,11 +439,235 @@ def compute_price_vnd(df):
     return df
 
 
+def normalize_warranty(s):
+    """Chuẩn hóa cỗt warranty về dạng '<N> Year' / '<N> Years'.
+
+    Đầu vào điển hình: '1 Year', '1 YEAR', '2 Years', '1year',
+                         '1-year limited hardware warranty', v.v.
+    Đầu ra: '1 Year', '2 Years', '3 Years', hoặc 'Unknown'.
+    """
+    if pd.isna(s) or not str(s).strip():
+        return 'Unknown'
+    txt = str(s).lower()
+    m = re.search(r'(\d+)', txt)
+    if not m:
+        return 'Unknown'
+    n = int(m.group(1))
+    return f"{n} Year" if n == 1 else f"{n} Years"
+
+
+def compute_normalize_warranty(df):
+    if 'warranty' in df.columns:
+        df['warranty'] = df['warranty'].apply(normalize_warranty)
+    return df
+
+
+def clean_text_value(value):
+    if pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.lower() in {'nan', 'none', 'n/a', 'na', '-', '—'}:
+        return None
+    return text
+
+
+def infer_brand_from_product_name(product_name):
+    text = clean_text_value(product_name)
+    if text is None:
+        return None
+
+    low = text.lower()
+    brand_aliases = [
+        # ASUS: tên thương hiệu, dòng sản phẩm, và các model code phổ biến
+        # (FX5/FX6 = TUF F-series; G5/G7/G8 ROG Strix; GA4/GA5/GA6 = Zephyrus G14/G15/G16;
+        #  GU6 = Zephyrus M16; GV3 = ROG Flow; GX6 = Zephyrus Duo; GZ3 = Zephyrus G13;
+        #  D35 = ProArt Studiobook)
+        ('ASUS', ['asus', 'rog', 'strix', 'tuf', 'zenbook', 'vivobook', 'expertbook',
+                  'proart', 'zephyrus',
+                  'fx5', 'fx6', 'gv3', 'ga4', 'ga5', 'ga6', 'gu6', 'gz3', 'gx6',
+                  'g713', 'g733', 'g513', 'g533', 'g814', 'g834', 'd3500']),
+        ('HP', ['hp', 'victus', 'omen']),
+        ('Lenovo', ['lenovo', 'legion', 'loq', 'thinkpad', 'ideapad', 'thinkbook']),
+        ('Dell', ['dell', 'alienware']),
+        ('MSI', ['msi', 'katana', 'raider', 'vector', 'crosshair', 'cyborg', 'prestige',
+                  'summit', 'stealth', 'pulse', 'alpha', 'bravo', 'modern', 'creator',
+                  'venture', 'sword']),
+        ('Acer', ['acer', 'aspire', 'nitro', 'predator', 'swift']),
+        ('Microsoft', ['microsoft', 'surface']),
+        ('Apple', ['apple', 'macbook']),
+        ('Samsung', ['samsung', 'galaxy book']),
+        ('Gigabyte', ['gigabyte', 'aero']),
+        ('Razer', ['razer', 'blade']),
+        ('Huawei', ['huawei', 'matebook']),
+    ]
+
+    for brand, aliases in brand_aliases:
+        if any(alias in low for alias in aliases):
+            return brand
+    return None
+
+
+def extract_display_resolution(display_text):
+    text = clean_text_value(display_text)
+    if text is None:
+        return None
+    match = re.search(r'(\d{3,4})\s*[x×*]\s*(\d{3,4})', text.lower())
+    if not match:
+        return None
+    return f"{match.group(1)} x {match.group(2)}"
+
+
+def extract_display_refresh_rate(display_text):
+    text = clean_text_value(display_text)
+    if text is None:
+        return None
+    low = text.lower()
+    match = re.search(r'(\d{2,3})\s*hz', low)
+    if match:
+        return f"{match.group(1)} Hz"
+    # Fallback mặc định: mọi màn hình không xác định được refresh rate → 60 Hz
+    return '60 Hz'
+
+
+def extract_gpu_memory(video_graphics_text):
+    text = clean_text_value(video_graphics_text)
+    if text is None:
+        return None
+
+    low = text.lower()
+    if any(token in low for token in ['integrated', 'intel arc graphics', 'qualcomm adreno', 'intel uhd', 'intel iris', 'intel graphics']):
+        return 'Integrated'
+
+    match = re.search(r'(\d+(?:\.\d+)?)\s*gb\s*(gddr\d+)?', low)
+    if match:
+        size = match.group(1)
+        gddr = match.group(2)
+        return f"{size}GB {gddr.upper()}" if gddr else f"{size}GB"
+
+    match = re.search(r'(gddr\d+)\s*(\d+(?:\.\d+)?)\s*gb', low)
+    if match:
+        return f"{match.group(2)}GB {match.group(1).upper()}"
+
+    return None
+
+
+def infer_video_graphics(row):
+    video_graphics = clean_text_value(row.get('video_graphics'))
+    if video_graphics is not None:
+        return video_graphics
+
+    processor_text = clean_text_value(row.get('processor'))
+    product_name = clean_text_value(row.get('product_name'))
+    processor_low = processor_text.lower() if processor_text else ''
+    product_low = product_name.lower() if product_name else ''
+
+    if 'snapdragon' in processor_low or 'surface pro 11' in product_low:
+        return 'Qualcomm Adreno GPU'
+    if 'intel core ultra' in processor_low or 'intel arc' in processor_low:
+        return 'Intel Arc Graphics'
+    if 'intel' in processor_low:
+        return 'Intel Graphics'
+    if 'amd ryzen' in processor_low or 'ryzen ai' in processor_low:
+        return 'AMD Radeon Graphics'
+    return 'Unknown'
+
+
+def fill_descriptive_fields(df):
+    if 'product_name' not in df.columns:
+        df['product_name'] = pd.NA
+
+    if 'brand' in df.columns:
+        df['brand'] = df['brand'].apply(clean_text_value)
+        inferred_brand = df['product_name'].apply(infer_brand_from_product_name)
+        df['brand'] = df['brand'].fillna(inferred_brand)
+        df['brand'] = df['brand'].fillna('Unknown')
+
+    if 'video_graphics' in df.columns:
+        df['video_graphics'] = df.apply(infer_video_graphics, axis=1)
+
+    if 'video_graphics' in df.columns and 'video_graphics_memory' in df.columns:
+        df['video_graphics_memory'] = df['video_graphics_memory'].apply(clean_text_value)
+        inferred_gpu_memory = df['video_graphics'].apply(extract_gpu_memory)
+        df['video_graphics_memory'] = df['video_graphics_memory'].fillna(inferred_gpu_memory)
+        df['video_graphics_memory'] = df['video_graphics_memory'].fillna('Unknown')
+
+    if 'display' in df.columns and 'display_resolution' in df.columns:
+        df['display_resolution'] = df['display_resolution'].apply(clean_text_value)
+        inferred_resolution = df['display'].apply(extract_display_resolution)
+        df['display_resolution'] = df['display_resolution'].fillna(inferred_resolution)
+        df['display_resolution'] = df['display_resolution'].fillna('Unknown')
+
+    if 'display' in df.columns and 'display_refresh_rate' in df.columns:
+        df['display_refresh_rate'] = df['display_refresh_rate'].apply(clean_text_value)
+        inferred_refresh = df['display'].apply(extract_display_refresh_rate)
+        df['display_refresh_rate'] = df['display_refresh_rate'].fillna(inferred_refresh)
+        df['display_refresh_rate'] = df['display_refresh_rate'].fillna('60 Hz')
+
+    fill_from_group = ['operating_system', 'keyboard', 'battery', 'webcam', 'connections', 'dimensions', 'display']
+
+    for column in fill_from_group:
+        if column not in df.columns:
+            continue
+        df[column] = df[column].apply(clean_text_value)
+        if df[column].isna().any():
+            mode_by_product = df.groupby('product_name')[column].transform(
+                lambda s: s.dropna().mode().iat[0] if not s.dropna().mode().empty else None
+            )
+            df[column] = df[column].fillna(mode_by_product)
+        if df[column].isna().any() and 'brand' in df.columns:
+            mode_by_brand = df.groupby('brand')[column].transform(
+                lambda s: s.dropna().mode().iat[0] if not s.dropna().mode().empty else None
+            )
+            df[column] = df[column].fillna(mode_by_brand)
+        df[column] = df[column].fillna('Unknown')
+
+    return df
+
+
+def check_duplicates(df: pd.DataFrame, subset: list = None, verbose: bool = True) -> pd.DataFrame:
+    """Kiểm tra và báo cáo các dòng trùng lặp trong DataFrame.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        DataFrame cần kiểm tra.
+    subset : list, optional
+        Danh sách cột dùng để xác định bản ghi trùng (mặc định: tất cả cột).
+        Ví dụ: ['product_name', 'brand', 'processor'] để xác định duplicate
+        dựa trên tên sản phẩm, thương hiệu và CPU.
+    verbose : bool
+        Nếu True, in báo cáo chi tiết ra console.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame đã loại bỏ các dòng trùng lặp (giữ lại occurrence đầu tiên).
+    """
+    total_rows = len(df)
+
+    # Xóa duplicate hoàn toàn, giữ lại dòng đầu tiên
+    df_clean = df.drop_duplicates(keep='first')
+    removed = total_rows - len(df_clean)
+    if removed > 0:
+        print(f"[check_duplicates] Đã xóa {removed:,} dòng trùng lặp hoàn toàn. "
+              f"Còn lại {len(df_clean):,} dòng.")
+    else:
+        print("[check_duplicates] Không tìm thấy dòng trùng lặp hoàn toàn.")
+
+    return df_clean
+
+
 def clean_laptops_csv(input_path: Path, output_path: Path, drop_columns: list):
     df = pd.read_csv(input_path, encoding='utf-8', low_memory=False)
     orig_columns = list(df.columns)
     norm_map = {c: normalize_col_name(c) for c in orig_columns}
     df = df.rename(columns=norm_map)
+
+    # --- Kiểm tra duplicate ngay sau khi đọc dữ liệu ---
+    key_cols = ['product_name', 'brand', 'processor', 'ram', 'hard_drive', 'price']
+    df = check_duplicates(df, subset=key_cols, verbose=True)
 
     # Expect normalized columns `processor` and `video_graphics` to exist
     # (raw file contains these). If not found, create empty columns and warn.
@@ -500,6 +737,16 @@ def clean_laptops_csv(input_path: Path, output_path: Path, drop_columns: list):
     except Exception as e:
         print('Price conversion failed:', e)
         df['price'] = df.get('price', pd.Series()).fillna(0)
+
+    try:
+        df = compute_normalize_warranty(df)
+    except Exception as e:
+        print('Warranty normalization failed:', e)
+
+    try:
+        df = fill_descriptive_fields(df)
+    except Exception as e:
+        print('Descriptive field fill failed:', e)
 
     # Save cleaned and enriched CSV
     df.to_csv(output_path, index=False, encoding='utf-8')
