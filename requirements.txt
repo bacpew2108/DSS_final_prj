@@ -1,3 +1,8 @@
 streamlit
 pandas
 requests
+plotly
+networkx
+scikit-learn
+matplotlib
+sns
