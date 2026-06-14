@@ -1,3 +1,4 @@
+# streamlit run test.py  
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -41,10 +42,10 @@ except FileNotFoundError:
 st.sidebar.header("🛠️ 1. Lọc Ràng Buộc Cứng")
 segment = st.sidebar.selectbox(
     "Phân khúc ngân sách", 
-    ["Rẻ (< 15 Triệu)", "Phổ thông (15 - 25 Triệu)", "Cao cấp (> 25 Triệu)"],
+    ["Tất cả phân khúc", "Rẻ (< 15 Triệu)", "Phổ thông (15 - 25 Triệu)", "Cao cấp (> 25 Triệu)"],
     index=1
 )
-max_price = map_segment_to_budget(segment)
+price_range = map_segment_to_budget(segment)
 
 min_ram = st.sidebar.selectbox("RAM tối thiểu (GB)", [8, 16, 32, 64], index=1)
 min_storage = st.sidebar.selectbox("Ổ cứng tối thiểu (GB)", [256, 512, 1024], index=1)
@@ -161,7 +162,7 @@ if weights_array is not None:
         st.error(f"❌ MA TRẬN KHÔNG NHẤT QUÁN! Tỷ số CR = {cr_score:.3f} (Vượt ngưỡng 0.1). Vui lòng điều chỉnh lại các thanh trượt ở Chế độ 3 sao cho logic hơn.")
     else:
         # 1. Lọc dữ liệu thô
-        filtered_df = apply_hard_filters(df, max_price, min_ram, min_storage, selected_brands)
+        filtered_df = apply_hard_filters(df, price_range, min_ram, min_storage, selected_brands)
         
         if filtered_df.empty:
             st.error("Không có laptop nào thỏa mãn các ràng buộc cứng ở cột bên trái. Bạn hãy nới lỏng ngân sách hoặc giảm yêu cầu dung lượng nhé!")

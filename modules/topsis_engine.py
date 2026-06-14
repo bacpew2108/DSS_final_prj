@@ -31,11 +31,19 @@ def calculate_ahp_weights_with_cr(matrix):
     return weights, cr, is_consistent
 
 # Hàm Lọc Cứng (Hard Filter Engine)
-def apply_hard_filters(df, max_price, min_ram, min_storage, selected_brands=None):
+def apply_hard_filters(df, price_range, min_ram, min_storage, selected_brands=None):
     """
     Lọc bỏ các laptop không đạt tiêu chí cứng.
+    price_range: tuple (min_price, max_price) hoặc float (max_price cho backward compatibility)
     """
+    # Handle backward compatibility: nếu price_range là số, chuyển thành tuple
+    if isinstance(price_range, (int, float)):
+        min_price, max_price = 0, price_range
+    else:
+        min_price, max_price = price_range
+    
     filtered_df = df[
+        (df['price'] >= min_price) & 
         (df['price'] <= max_price) & 
         (df['ram_capacity'] >= min_ram) & 
         (df['storage'] >= min_storage)
@@ -52,16 +60,19 @@ def apply_hard_filters(df, max_price, min_ram, min_storage, selected_brands=None
 def map_segment_to_budget(segment_name):
     """
     Hàm ánh xạ tên Phân khúc mà người dùng chọn sang Ngân sách tối đa (max_price).
+    Trả về tuple (min_price, max_price) để lọc chính xác theo phạm vi.
     (Phân khúc được lấy từ Insight phân tích dữ liệu ở phần trước).
     """
-    if segment_name == "Rẻ (< 15 Triệu)":
-        return 15.0
+    if segment_name == "Tất cả phân khúc":
+        return (0.0, 999.0)  # Không giới hạn giá
+    elif segment_name == "Rẻ (< 15 Triệu)":
+        return (0.0, 15.0)  # < 15 triệu
     elif segment_name == "Phổ thông (15 - 25 Triệu)":
-        return 25.0
+        return (15.0, 25.0)  # 15-25 triệu
     elif segment_name == "Cao cấp (> 25 Triệu)":
-        return 999.0  # Một con số rất lớn đại diện cho việc không giới hạn ngân sách
+        return (25.0, 999.0)  # > 25 triệu (999 là một con số rất lớn đại diện cho không giới hạn)
     else:
-        return 25.0 # Mặc định nếu lỗi
+        return (15.0, 25.0)  # Mặc định: Phổ thông
     
 # ==========================================
 # CHẾ ĐỘ 1: GỢI Ý NHANH (MẶC ĐỊNH - 0 SLIDER)
