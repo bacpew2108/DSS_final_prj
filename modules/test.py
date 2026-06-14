@@ -1,123 +1,251 @@
-# streamlit run test.py
-# Đức hình dung web qua đây 
+import os
 import numpy as np
 import pandas as pd
-import streamlit as st
 
+# =====================================================================
+# CẤU HÌNH ĐƯỜNG DẪN TỚI FILE CSV
+# =====================================================================
+current_dir = os.path.dirname(os.path.abspath(__file__))
+csv_path = os.path.join(current_dir, '..', 'data', 'laptops_dataset_cleaned.csv')
 
-# ==========================================
-# 1. THUẬT TOÁN AHP (Tính trọng số từ so sánh cặp)
-# ==========================================
-def calculate_ahp(matrix):
-    """
-    Nhận vào ma trận so sánh cặp nxn.
-    Trả về: Trọng số (weights) và Tỉ số nhất quán (CR).
-    """
+# =====================================================================
+# PHẦN 1: CÁC HÀM XỬ LÝ BACKEND (LỌC, AHP, TOPSIS)
+# =====================================================================
+
+def map_segment_to_budget(segment_name):
+    """Ánh xạ tên Phân khúc sang Ngân sách tối đa (max_price tính bằng Triệu VNĐ)"""
+    if segment_name == "Rẻ (< 15 Triệu)":
+        return 15.0
+    elif segment_name == "Phổ thông (15 - 25 Triệu)":
+        return 25.0
+    elif segment_name == "Cao cấp (> 25 Triệu)":
+        return 999.0  # Đại diện cho không giới hạn / mua mọi giá
+    else:
+        return 25.0
+
+def apply_hard_filters(df, max_price, min_ram, min_storage, selected_brands=None):
+    """Bộ lọc cứng: Loại bỏ các laptop không đạt yêu cầu bắt buộc trước khi chạy TOPSIS"""
+    filtered_df = df[
+        (pd.to_numeric(df['price'], errors='coerce') <= max_price) & 
+        (pd.to_numeric(df['ram_capacity'], errors='coerce') >= min_ram) & 
+        (pd.to_numeric(df['storage'], errors='coerce') >= min_storage)
+    ].copy()
+    
+    if selected_brands and len(selected_brands) > 0:
+        filtered_df = filtered_df[filtered_df['brand'].isin(selected_brands)]
+    return filtered_df
+
+def calculate_ahp_weights_with_cr(matrix):
+    """Tính trọng số AHP từ ma trận so sánh cặp và kiểm tra Tỷ số nhất quán (CR)."""
     n = matrix.shape[0]
-    # Tính toán vector riêng (Eigenvector) bằng phương pháp xấp xỉ dòng
     col_sums = np.sum(matrix, axis=0)
     normalized_matrix = matrix / col_sums
     weights = np.mean(normalized_matrix, axis=1)
-
-    # Tính toán Tỉ số nhất quán CR
-    weighted_sum = np.dot(matrix, weights)
-    consistency_vector = weighted_sum / weights
-    lambda_max = np.mean(consistency_vector)
-
-    ci = (lambda_max - n) / (n - 1) if n > 1 else 0
-    # Bảng RI chuẩn
-    ri_dict = {1: 0, 2: 0, 3: 0.58, 4: 0.90, 5: 1.12, 6: 1.24, 7: 1.32, 8: 1.41}
-    ri = ri_dict.get(n, 1.41)
-
+    
+    weighted_sum_vector = np.dot(matrix, weights)
+    lambda_max = np.mean(weighted_sum_vector / weights)
+    
+    ci = (lambda_max - n) / (n - 1)
+    ri_dict = {1:0, 2:0, 3:0.58, 4:0.90, 5:1.12, 6:1.24, 7:1.32}
+    ri = ri_dict.get(n, 1.24) 
+    
     cr = ci / ri if ri > 0 else 0
-    return weights, cr
+    is_consistent = cr < 0.1
+    
+    return weights, cr, is_consistent
+
+def calculate_topsis(df, weights_array, top_n=5):
+    """Thuật toán TOPSIS xếp hạng phương án."""
+    result_df = df.copy()
+    # THỨ TỰ THUỘC TÍNH: [Giá, RAM, Ổ cứng, CPU, GPU, Nặng]
+    criteria_cols = ['price', 'ram_capacity', 'storage', 'cpu_point', 'gpu_point', 'weight']
+    
+    for col in criteria_cols:
+        result_df[col] = pd.to_numeric(result_df[col], errors='coerce').fillna(0)
+        
+    matrix = result_df[criteria_cols].values
+    impacts = ['min', 'max', 'max', 'max', 'max', 'min']
+    
+    # 1. Chuẩn hóa Vector
+    sqrt_sum_sq = np.sqrt(np.sum(matrix**2, axis=0))
+    sqrt_sum_sq[sqrt_sum_sq == 0] = 1e-10 
+    normalized_matrix = matrix / sqrt_sum_sq
+
+    # 2. Nhân trọng số
+    weighted_matrix = normalized_matrix * weights_array
+
+    # 3. Xác định Cực dương (Best) và Cực âm (Worst)
+    ideal_best = np.zeros(len(criteria_cols))
+    ideal_worst = np.zeros(len(criteria_cols))
+    for i in range(len(criteria_cols)):
+        if impacts[i] == 'max':
+            ideal_best[i] = np.max(weighted_matrix[:, i])
+            ideal_worst[i] = np.min(weighted_matrix[:, i])
+        elif impacts[i] == 'min':
+            ideal_best[i] = np.min(weighted_matrix[:, i])
+            ideal_worst[i] = np.max(weighted_matrix[:, i])
+
+    # 4. Tính khoảng cách và điểm C_i
+    dist_best = np.sqrt(np.sum((weighted_matrix - ideal_best)**2, axis=1))
+    dist_worst = np.sqrt(np.sum((weighted_matrix - ideal_worst)**2, axis=1))
+    
+    sum_dist = dist_best + dist_worst
+    sum_dist[sum_dist == 0] = 1e-10
+    topsis_score = dist_worst / sum_dist
+
+    result_df['TOPSIS_Score'] = np.round(topsis_score, 4)
+    result_df = result_df.sort_values(by='TOPSIS_Score', ascending=False).reset_index(drop=True)
+    return result_df.head(top_n)
+
+def check_outlier_alert(top_1_laptop_price, outlier_threshold=51.4):
+    """Cảnh báo nếu sản phẩm có giá vượt ngưỡng dị biệt (Outlier)"""
+    if top_1_laptop_price > outlier_threshold:
+        return f"⚠️ CẢNH BÁO: Sản phẩm Top 1 có mức giá siêu cao cấp ({top_1_laptop_price}). Khuyên dùng cho dân chuyên nghiệp!"
+    return ""
+
+# --- CÁC HÀM XUẤT TRỌNG SỐ CHO 3 CHẾ ĐỘ ---
+def get_weights_mode_1(user_profile):
+    """Chế độ 1: Trọng số tĩnh lấy từ chuyên gia (0 slider)"""
+    profiles = {
+        'student':   np.array([0.352, 0.119, 0.058, 0.165, 0.058, 0.248]),
+        'gamer':     np.array([0.103, 0.134, 0.061, 0.264, 0.395, 0.043]),
+        'developer': np.array([0.146, 0.222, 0.122, 0.380, 0.048, 0.082])
+    }
+    return profiles.get(user_profile, profiles['student'])
+
+def get_weights_mode_2(user_profile, scores_dict):
+    """Chế độ 2: Tùy chỉnh thu nhỏ (Chuyển điểm 1-10 của 4 thuộc tính thành vector trọng số)"""
+    weights = np.zeros(6)
+    if user_profile == 'student':
+        weights[0], weights[1], weights[3], weights[5] = scores_dict.get('price',0), scores_dict.get('ram',0), scores_dict.get('cpu',0), scores_dict.get('weight',0)
+    elif user_profile == 'gamer':
+        weights[0], weights[1], weights[3], weights[4] = scores_dict.get('price',0), scores_dict.get('ram',0), scores_dict.get('cpu',0), scores_dict.get('gpu',0)
+    elif user_profile == 'developer':
+        weights[0], weights[1], weights[2], weights[3] = scores_dict.get('price',0), scores_dict.get('ram',0), scores_dict.get('storage',0), scores_dict.get('cpu',0)
+        
+    total_score = np.sum(weights)
+    if total_score > 0:
+        weights = weights / total_score
+    else:
+        weights = get_weights_mode_1(user_profile)
+    return weights
+
+def get_weights_mode_3(ahp_matrix_6x6):
+    """Chế độ 3: Tính từ Ma trận so sánh cặp đầy đủ 6x6 của người dùng"""
+    weights, cr, is_consistent = calculate_ahp_weights_with_cr(ahp_matrix_6x6)
+    return weights, cr, is_consistent
 
 
-# ==========================================
-# 2. THUẬT TOÁN TOPSIS (Xếp hạng giải pháp)
-# ==========================================
-def run_topsis(decision_matrix, weights, impacts):
-    """
-    decision_matrix: Ma trận quyết định (m dòng là laptop, n cột là tiêu chí)
-    weights: Mảng trọng số n phần tử (từ AHP)
-    impacts: Mảng dấu cột ('+' cho Lợi ích, '-' cho Chi phí)
-    """
-    # Bước 1: Chuẩn hóa ma trận
-    norm_matrix = decision_matrix / np.sqrt(
-        np.sum(decision_matrix**2, axis=0)
-    )
+# =====================================================================
+# PHẦN 2: CHẠY KIỂM THỬ VỚI DỮ LIỆU THẬT
+# =====================================================================
+if __name__ == "__main__":
+    print("\n⏳ Đang load dữ liệu từ Database...")
+    try:
+        df_laptops = pd.read_csv(csv_path)
+        print(f"✅ Đã load thành công {len(df_laptops)} mẫu laptop!")
+    except FileNotFoundError:
+        print(f"❌ Lỗi: Không tìm thấy file CSV tại đường dẫn: {csv_path}")
+        exit()
 
-    # Bước 2: Nhân trọng số
-    weighted_matrix = norm_matrix * weights
+    # Kiểm tra xem giá trong file CSV là đơn vị Triệu (VD: 25.5) hay đơn vị đồng (VD: 25500000)
+    is_price_in_millions = df_laptops['price'].max() < 1000
+    multiplier = 1 if is_price_in_millions else 1_000_000
 
-    # Bước 3: Xác định giải pháp lý tưởng tốt (+) và xấu (-)
-    ideal_best = []
-    ideal_worst = []
-    for i in range(len(impacts)):
-        if impacts[i] == "+":
-            ideal_best.append(np.max(weighted_matrix[:, i]))
-            ideal_worst.append(np.min(weighted_matrix[:, i]))
-        else:
-            ideal_best.append(np.min(weighted_matrix[:, i]))
-            ideal_worst.append(np.max(weighted_matrix[:, i]))
+    # -----------------------------------------------------------------
+    print("\n" + "="*80)
+    print("▶️ TEST CHẾ ĐỘ 1: SINH VIÊN (GỢI Ý NHANH)")
+    # Giả lập UI: User chọn Đối tượng Sinh Viên và Phân khúc Phổ thông
+    u1_role = 'student'
+    u1_segment = "Phổ thông (15 - 25 Triệu)"
+    
+    print(f"1. User chọn: {u1_role.upper()} | Phân khúc: {u1_segment}")
+    
+    # Bước lọc cứng
+    budget_1 = map_segment_to_budget(u1_segment) * multiplier
+    df_filtered_1 = apply_hard_filters(df_laptops, max_price=budget_1, min_ram=8, min_storage=256)
+    
+    # Bước lấy trọng số
+    w_mode1 = get_weights_mode_1(u1_role)
+    
+    # Bước chạy TOPSIS
+    if df_filtered_1.empty:
+        print("❌ Không có laptop nào thỏa mãn bộ lọc!")
+    else:
+        result_1 = calculate_topsis(df_filtered_1, w_mode1)
+        print("\n🏆 KẾT QUẢ XẾP HẠNG:")
+        print(result_1[['brand', 'product_name', 'price', 'weight', 'cpu_point', 'TOPSIS_Score']])
 
-    # Bước 4: Tính khoảng cách Euclidean
-    dist_best = np.sqrt(np.sum((weighted_matrix - ideal_best) ** 2, axis=1))
-    dist_worst = np.sqrt(np.sum((weighted_matrix - ideal_worst) ** 2, axis=1))
+    # -----------------------------------------------------------------
+    print("\n" + "="*80)
+    print("▶️ TEST CHẾ ĐỘ 2: LẬP TRÌNH VIÊN (TÙY CHỈNH THU NHỎ)")
+    # Giả lập UI: User chọn Developer, Phân khúc Cao cấp, và chấm điểm các thuộc tính
+    u2_role = 'developer'
+    u2_segment = "Cao cấp (> 25 Triệu)"
+    u2_scores = {'price': 3, 'ram': 10, 'storage': 8, 'cpu': 9} # GPU & Nặng bị ẩn nên điểm = 0
+    
+    print(f"1. User chọn: {u2_role.upper()} | Phân khúc: {u2_segment}")
+    print(f"   Đánh giá điểm: {u2_scores}")
+    
+    # Bước lọc cứng
+    budget_2 = map_segment_to_budget(u2_segment) * multiplier
+    df_filtered_2 = apply_hard_filters(df_laptops, max_price=budget_2, min_ram=16, min_storage=512)
+    
+    # Bước lấy trọng số
+    w_mode2 = get_weights_mode_2(u2_role, u2_scores)
+    
+    # Bước chạy TOPSIS
+    if df_filtered_2.empty:
+        print("❌ Không có laptop nào thỏa mãn bộ lọc!")
+    else:
+        result_2 = calculate_topsis(df_filtered_2, w_mode2)
+        print("\n🏆 KẾT QUẢ XẾP HẠNG:")
+        print(result_2[['brand', 'product_name', 'price', 'ram_capacity', 'storage', 'cpu_point', 'TOPSIS_Score']])
+        
+        # Cảnh báo
+        top_1_price = result_2.iloc[0]['price']
+        alert_2 = check_outlier_alert(top_1_price, outlier_threshold=(51.4 * multiplier))
+        if alert_2: print("\n" + alert_2)
 
-    # Bước 5: Tính điểm tương đồng Closeness Coefficient (C)
-    performance_score = dist_worst / (dist_best + dist_worst)
-    return performance_score
+    # -----------------------------------------------------------------
+    print("\n" + "="*80)
+    print("▶️ TEST CHẾ ĐỘ 3: GAME THỦ (AHP 6x6 HOÀN CHỈNH)")
+    # Giả lập UI: User chọn Game thủ, Phân khúc Cao cấp, và tự kéo 15 thanh tạo ma trận 6x6
+    u3_role = 'gamer'
+    u3_segment = "Cao cấp (> 25 Triệu)"
+    
+    print(f"1. User chọn: {u3_role.upper()} | Phân khúc: {u3_segment}")
+    print("   User kéo 15 thanh slider tạo ma trận AHP ưu tiên tuyệt đối GPU.")
+    
+    # Bước lọc cứng
+    budget_3 = map_segment_to_budget(u3_segment) * multiplier
+    df_filtered_3 = apply_hard_filters(df_laptops, max_price=budget_3, min_ram=16, min_storage=512)
+    
+    # Giả lập tạo ma trận 6x6 (Mức độ quan trọng mong muốn: Price:1, RAM:2, Storage:1, CPU:4, GPU:6, Weight:1)
+    w_desired = np.array([1, 2, 1, 4, 6, 1], dtype=float)
+    matrix_6x6 = np.zeros((6, 6))
+    for i in range(6):
+        for j in range(6):
+            matrix_6x6[i, j] = w_desired[i] / w_desired[j]
+            
+    # Bước lấy trọng số
+    w_mode3, cr, is_ok = get_weights_mode_3(matrix_6x6)
+    
+    if not is_ok:
+        print("❌ Lỗi: Ma trận của người dùng bị mâu thuẫn logic (CR >= 0.1)!")
+    elif df_filtered_3.empty:
+        print("❌ Không có laptop nào thỏa mãn bộ lọc!")
+    else:
+        print(f"✅ Ma trận AHP hợp lệ (CR = {cr:.4f}). Đang chạy TOPSIS...")
+        result_3 = calculate_topsis(df_filtered_3, w_mode3)
+        print("\n🏆 KẾT QUẢ XẾP HẠNG:")
+        print(result_3[['brand', 'product_name', 'price', 'cpu_point', 'gpu_point', 'TOPSIS_Score']])
+        
+        # Cảnh báo
+        top_1_price_3 = result_3.iloc[0]['price']
+        alert_3 = check_outlier_alert(top_1_price_3, outlier_threshold=(51.4 * multiplier))
+        if alert_3: print("\n" + alert_3)
 
-
-# ==========================================
-# 3. GIAO DIỆN WEB STREAMLIT
-# ==========================================
-st.title("💻 Hệ Hỗ Trợ Quyết Định Mua Laptop (AHP - TOPSIS)")
-
-st.subheader("Bước 1: So sánh cặp các tiêu chí (AHP)")
-st.write(
-    "Vui lòng cho biết mức độ ưu tiên giữa các cặp tiêu chí (Giá vs cấu hình):"
-)
-
-# Ví dụ so sánh cặp giữa 3 tiêu chí: Giá (Min), RAM (Max), Trọng lượng (Min)
-comp_1 = st.slider(
-    "Giá so với RAM (1: RAM cực kỳ quan trọng, 9: Giá cực kỳ quan trọng)",
-    1.0,
-    9.0,
-    5.0,
-)
-comp_2 = st.slider(
-    "Giá so với Trọng lượng (1: Trọng lượng cực kỳ quan trọng, 9: Giá cực kỳ quan trọng)",
-    1.0,
-    9.0,
-    5.0,
-)
-comp_3 = st.slider(
-    "RAM so với Trọng lượng (1: Trọng lượng cực kỳ quan trọng, 9: RAM cực kỳ quan trọng)",
-    1.0,
-    9.0,
-    5.0,
-)
-
-# Tạo ma trận so sánh cặp 3x3 từ inputs
-ahp_matrix = np.array(
-    [
-        [1.0, comp_1, comp_2],
-        [1.0 / comp_1, 1.0, comp_3],
-        [1.0 / comp_2, 1.0 / comp_3, 1.0],
-    ]
-)
-
-weights, cr = calculate_ahp(ahp_matrix)
-
-st.write(f"**Tỉ số nhất quán (CR):** {cr:.4f}")
-if cr < 0.1:
-    st.success("Đánh giá nhất quán! Trọng số hợp lệ.")
-else:
-    st.warning("Đánh giá chưa nhất quán (CR >= 0.1). Vui lòng điều chỉnh lại.")
-
-# Hiển thị trọng số
-st.write(
-    f"Trọng số tính được: **Giá:** {weights[0]:.2f} | **RAM:** {weights[1]:.2f} | **Trọng lượng:** {weights[2]:.2f}"
-)
+    print("\n" + "="*80)
+    print("🎉 KẾT THÚC KIỂM THỬ TRÊN DỮ LIỆU THẬT!")
+    print("="*80 + "\n")
