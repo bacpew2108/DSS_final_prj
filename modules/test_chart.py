@@ -15,7 +15,7 @@ if __name__ == "__main__":
     
     print("2. Đang gọi hàm vẽ từ modules/charts.py...")
     # Hàm này sẽ chạy code nằm trong file modules/charts.py của bạn
-    fig = plot_radar_chart(df_mock, name_col='product_name')
+    fig = plot_radar_chart(df_mock, segment_name="Phổ thông (15 - 25 Triệu)", name_col='product_name')
     
     print("3. Đang mở trình duyệt để hiển thị kết quả biểu đồ...")
     fig.show()
