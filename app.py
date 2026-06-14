@@ -127,35 +127,35 @@ with tab3:
     with st.expander("💰 Nhóm so sánh: GIÁ CẢ so với các tiêu chí khác", expanded=True):
         i = 0
         for j in range(1, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 1.0, step=1.0, key=f"ahp_{i}_{j}")
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
             ahp_matrix[i, j] = val
             ahp_matrix[j, i] = 1.0 / val
 
     with st.expander("⚖️ Nhóm so sánh: DUNG LƯỢNG RAM so với các tiêu chí khác"):
         i = 1
         for j in range(2, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 1.0, step=1.0, key=f"ahp_{i}_{j}")
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
             ahp_matrix[i, j] = val
             ahp_matrix[j, i] = 1.0 / val
 
     with st.expander("💾 Nhóm so sánh: Ổ CỨNG so với các tiêu chí khác"):
         i = 2
         for j in range(3, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 1.0, step=1.0, key=f"ahp_{i}_{j}")
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
             ahp_matrix[i, j] = val
             ahp_matrix[j, i] = 1.0 / val
 
     with st.expander("🧠 Nhóm so sánh: HIỆU NĂNG CPU so với các tiêu chí khác"):
         i = 3
         for j in range(4, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 1.0, step=1.0, key=f"ahp_{i}_{j}")
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
             ahp_matrix[i, j] = val
             ahp_matrix[j, i] = 1.0 / val
 
     with st.expander("🎮 Nhóm so sánh: HIỆU NĂNG GPU so với TRỌNG LƯỢNG"):
         i = 4
         j = 5
-        val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 1.0, step=1.0, key=f"ahp_{i}_{j}")
+        val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
         ahp_matrix[i, j] = val
         ahp_matrix[j, i] = 1.0 / val
 
@@ -268,5 +268,5 @@ if weights_array is not None:
 
             # 5. Vẽ biểu đồ Radar
             st.subheader("📊 Biểu Đồ Phân Tích Cấu Hình")
-            fig = plot_radar_chart(top3_df, name_col='Tên_Máy')
+            fig = plot_radar_chart(top3_df, segment, name_col='Tên_Máy')
             st.plotly_chart(fig, use_container_width=True)
