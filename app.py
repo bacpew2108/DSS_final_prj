@@ -112,8 +112,17 @@ with tab3:
     st.warning("Bạn đang thiết lập Ma trận so sánh cặp AHP (15 cặp). Nếu chỉ số Nhất quán CR > 0.1, hệ thống sẽ cảnh báo.")
     st.markdown("*(Thang đo: 1 = Bằng nhau, 9 = Cực kỳ quan trọng hơn)*")
     
+    # Khởi tạo session state cho CR
+    if 'ahp_cr' not in st.session_state:
+        st.session_state.ahp_cr = 0.0
+    if 'ahp_valid' not in st.session_state:
+        st.session_state.ahp_valid = True
+    
     labels = ['Giá', 'RAM', 'Ổ cứng', 'CPU', 'GPU', 'Trọng lượng']
     ahp_matrix = np.ones((6, 6))
+    
+    # Placeholder để hiển thị CR (sẽ cập nhật sau)
+    cr_placeholder = st.empty()
     
     with st.expander("💰 Nhóm so sánh: GIÁ CẢ so với các tiêu chí khác", expanded=True):
         i = 0
@@ -150,7 +159,31 @@ with tab3:
         ahp_matrix[i, j] = val
         ahp_matrix[j, i] = 1.0 / val
 
+    # Tính CR sau tất cả slider và cập nhật placeholder ở đầu
+    from modules.topsis_engine import calculate_ahp_weights_with_cr
+    weights_check, cr_check, is_valid_check = calculate_ahp_weights_with_cr(ahp_matrix)
+    
+    # Cập nhật session state
+    st.session_state.ahp_cr = cr_check
+    st.session_state.ahp_valid = is_valid_check
+    
+    # Cập nhật placeholder ở đầu với giá trị mới
+    with cr_placeholder.container():
+        st.markdown("### 📊 Tính Hợp Lệ Của Ma Trận AHP")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Tỷ số nhất quán (CR)", f"{st.session_state.ahp_cr:.4f}", delta="< 0.1 = Hợp lệ")
+        with col2:
+            if st.session_state.ahp_valid:
+                st.success("✅ Ma trận hợp lệ!")
+            else:
+                st.error("❌ Ma trận chưa hợp lệ!")
+        with col3:
+            st.info(f"Ngưỡng: CR < 0.1")
+        st.markdown("---")
+    
     st.markdown("<br>", unsafe_allow_html=True)
+    
     if st.button(" Chạy Tư Vấn (Chế độ 3)", use_container_width=True):
         weights_array, cr_score, is_ahp_valid = get_weights_mode_3(ahp_matrix, "custom")
 
