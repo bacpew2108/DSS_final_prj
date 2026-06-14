@@ -1,4 +1,4 @@
-# modules/processing/ram_storage.py
+# modules/laptop_etl/ram_storage.py
 """Parse và tính dung lượng RAM và ổ cứng từ chuỗi mô tả."""
 
 import re

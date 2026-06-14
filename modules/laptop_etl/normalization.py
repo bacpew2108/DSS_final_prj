@@ -1,4 +1,4 @@
-# modules/processing/normalization.py
+# modules/laptop_etl/normalization.py
 """Chuẩn hóa các trường dạng text: bảo hành và hệ điều hành."""
 
 import re

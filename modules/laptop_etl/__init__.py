@@ -1,4 +1,4 @@
-# modules/processing/__init__.py
+# modules/laptop_etl/__init__.py
 # Re-export every public symbol so existing imports keep working.
 
 from .utils import normalize_col_name, clean_text_value

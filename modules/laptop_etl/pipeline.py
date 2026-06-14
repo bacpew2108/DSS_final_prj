@@ -1,4 +1,4 @@
-# modules/processing/pipeline.py
+# modules/laptop_etl/pipeline.py
 """Pipeline chính: kiểm tra duplicate, điền trường mô tả, và hàm clean toàn bộ CSV."""
 
 from pathlib import Path
@@ -11,6 +11,7 @@ from .hardware import (
     compute_weight,
     compute_fill_colors,
     infer_brand_from_product_name,
+    normalize_display_resolution,
     extract_display_resolution,
     extract_display_refresh_rate,
     normalize_display_refresh_rate,
@@ -75,7 +76,11 @@ def fill_descriptive_fields(df):
         df['video_graphics_memory'] = df['video_graphics_memory'].fillna('Unknown')
 
     if 'display' in df.columns and 'display_resolution' in df.columns:
-        df['display_resolution'] = df['display_resolution'].apply(clean_text_value)
+        # Bước 1: chuẩn hóa các giá trị đã có (xử lý toàn bộ format lộn xộn)
+        df['display_resolution'] = df['display_resolution'].apply(
+            lambda x: normalize_display_resolution(x) if pd.notna(x) and str(x).strip().lower() not in ('', 'unknown') else None
+        )
+        # Bước 2: trích xuất từ cột display cho các giá trị còn thiếu
         inferred_resolution = df['display'].apply(extract_display_resolution)
         df['display_resolution'] = df['display_resolution'].fillna(inferred_resolution)
         df['display_resolution'] = df['display_resolution'].fillna('Unknown')

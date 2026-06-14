@@ -1,4 +1,4 @@
-# modules/processing/price_currency.py
+# modules/laptop_etl/price_currency.py
 """Chuyển đổi giá tiền từ EGP sang VND."""
 
 import re
