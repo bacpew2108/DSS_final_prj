@@ -35,6 +35,7 @@ def apply_hard_filters(df, price_range, min_ram, min_storage, selected_brands=No
     """
     Lọc bỏ các laptop không đạt tiêu chí cứng.
     price_range: tuple (min_price, max_price) hoặc float (max_price cho backward compatibility)
+    min_ram, min_storage: Nếu bằng 0 hoặc None, không áp dụng filter cho tiêu chí đó
     """
     # Handle backward compatibility: nếu price_range là số, chuyển thành tuple
     if isinstance(price_range, (int, float)):
@@ -42,12 +43,19 @@ def apply_hard_filters(df, price_range, min_ram, min_storage, selected_brands=No
     else:
         min_price, max_price = price_range
     
+    # Bắt đầu với điều kiện giá
     filtered_df = df[
         (df['price'] >= min_price) & 
-        (df['price'] <= max_price) & 
-        (df['ram_capacity'] >= min_ram) & 
-        (df['storage'] >= min_storage)
+        (df['price'] <= max_price)
     ].copy()
+    
+    # Áp dụng filter RAM nếu min_ram > 0
+    if min_ram and min_ram > 0:
+        filtered_df = filtered_df[df['ram_capacity'] >= min_ram]
+    
+    # Áp dụng filter Storage nếu min_storage > 0
+    if min_storage and min_storage > 0:
+        filtered_df = filtered_df[df['storage'] >= min_storage]
     
     # Nếu người dùng có chọn thương hiệu cụ thể
     if selected_brands and len(selected_brands) > 0:

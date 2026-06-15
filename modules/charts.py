@@ -6,8 +6,10 @@ def plot_radar_chart(top_df, segment_name, name_col='product_name'):
     """
     Vẽ biểu đồ Radar Chart với hệ quy chiếu (mức sàn/trần) tự động thay đổi
     theo phân khúc giá (Rẻ / Phổ thông / Cao cấp).
+    Hỗ trợ hiển thị từ 1 đến nhiều laptop (động theo số lượng).
     """
-    compare_df = top_df.head(3).copy()
+    compare_df = top_df.copy()  # Lấy tất cả laptop được truyền vào, không cứng định 3
+    num_laptops = len(compare_df)
     
     categories = ['Price', 'RAM', 'Storage', 'CPU Score', 'GPU Score', 'Weight']
     cols = ['price', 'ram_capacity', 'storage', 'cpu_point', 'gpu_point', 'weight']
@@ -75,8 +77,23 @@ def plot_radar_chart(top_df, segment_name, name_col='product_name'):
     # ==========================================
     fig = go.Figure()
     
-    fill_colors = ['rgba(44, 123, 219, 0.35)', 'rgba(255, 136, 0, 0.35)', 'rgba(38, 166, 91, 0.35)']
-    line_colors = ['rgb(44, 123, 219)', 'rgb(255, 136, 0)', 'rgb(38, 166, 91)']
+    # Tạo danh sách màu sắc động theo số lượng laptop
+    # Nếu > 3 laptop, tạo thêm màu sắc mới
+    base_colors = [
+        {'fill': 'rgba(44, 123, 219, 0.35)', 'line': 'rgb(44, 123, 219)'},      # Xanh dương
+        {'fill': 'rgba(255, 136, 0, 0.35)', 'line': 'rgb(255, 136, 0)'},        # Cam
+        {'fill': 'rgba(38, 166, 91, 0.35)', 'line': 'rgb(38, 166, 91)'},        # Xanh lá
+        {'fill': 'rgba(219, 39, 119, 0.35)', 'line': 'rgb(219, 39, 119)'},      # Hồng
+        {'fill': 'rgba(157, 13, 156, 0.35)', 'line': 'rgb(157, 13, 156)'},      # Tím
+        {'fill': 'rgba(255, 193, 7, 0.35)', 'line': 'rgb(255, 193, 7)'},        # Vàng
+        {'fill': 'rgba(0, 150, 136, 0.35)', 'line': 'rgb(0, 150, 136)'},        # Ngọc
+        {'fill': 'rgba(233, 30, 99, 0.35)', 'line': 'rgb(233, 30, 99)'},        # Đỏ hồng
+        {'fill': 'rgba(63, 81, 181, 0.35)', 'line': 'rgb(63, 81, 181)'},        # Xanh đậm
+        {'fill': 'rgba(76, 175, 80, 0.35)', 'line': 'rgb(76, 175, 80)'},        # Xanh nhạt
+    ]
+    
+    # Nếu cần nhiều hơn màu có sẵn, lặp lại danh sách
+    colors = (base_colors * (num_laptops // len(base_colors) + 1))[:num_laptops]
     
     for idx, row in compare_df.iterrows():
         r_values = norm_df.iloc[idx].values.tolist()
@@ -92,14 +109,17 @@ def plot_radar_chart(top_df, segment_name, name_col='product_name'):
             hover_texts.append(f"<b>{short_name}</b><br>{categories[i]}: <b>{val_str} {units[i]}</b>")
         hover_texts.append(hover_texts[0]) 
         
+        # Lấy màu sắc từ danh sách động
+        current_color = colors[idx]
+        
         fig.add_trace(go.Scatterpolar(
             r=r_values,
             theta=categories + [categories[0]],
             fill='toself',
-            fillcolor=fill_colors[idx],
+            fillcolor=current_color['fill'],
             mode='lines+markers', 
-            line=dict(color=line_colors[idx], width=2),
-            marker=dict(size=7, color=line_colors[idx]),
+            line=dict(color=current_color['line'], width=2),
+            marker=dict(size=7, color=current_color['line']),
             name=short_name,
             hoverinfo="text",
             text=hover_texts
@@ -128,13 +148,13 @@ def plot_radar_chart(top_df, segment_name, name_col='product_name'):
         ),
         showlegend=True,
         legend=dict(
-            orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5, font=dict(size=12)
+            orientation="h", yanchor="top", y=-0.18, xanchor="center", x=0.5, font=dict(size=11)
         ), 
         title=dict(
-            text=f"<b>Specification comparison</b><br><sup>Segment: {segment_name}</sup>", 
+            text=f"<b>Specification comparison</b><br><sup>Segment: {segment_name} | Showing {num_laptops} laptop(s)</sup>", 
             x=0.5, y=0.95, font=dict(size=18)
         ),
-        margin=dict(l=100, r=100, t=100, b=80), 
+        margin=dict(l=100, r=100, t=100, b=100), 
         paper_bgcolor="white"
     )
     

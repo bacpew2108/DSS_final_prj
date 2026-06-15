@@ -47,11 +47,16 @@ segment = st.sidebar.selectbox(
 )
 price_range = map_segment_to_budget(segment)
 
-min_ram = st.sidebar.selectbox("RAM tối thiểu (GB)", [8, 16, 32, 64], index=1)
-min_storage = st.sidebar.selectbox("Ổ cứng tối thiểu (GB)", [256, 512, 1024], index=1)
+ram_option = st.sidebar.selectbox("RAM tối thiểu (GB)", ["Tất cả", 8, 16, 32, 64], index=1)
+min_ram = 0 if ram_option == "Tất cả" else ram_option
+
+storage_option = st.sidebar.selectbox("Ổ cứng tối thiểu (GB)", ["Tất cả", 256, 512, 1024], index=1)
+min_storage = 0 if storage_option == "Tất cả" else storage_option
 
 brands_list = df['brand'].dropna().unique().tolist()
 selected_brands = st.sidebar.multiselect("Thương hiệu ưu tiên (Bỏ trống để tìm tất cả)", brands_list)
+
+top_n_results = st.sidebar.selectbox("Số lượng laptop đưa ra (Top N)", [1, 2, 3, 4, 5, 7, 10], index=2)
 
 # --- LỚP NGHIỆP VỤ: 3 CHẾ ĐỘ VẬN HÀNH (MODES) ---
 tab1, tab2, tab3 = st.tabs([
@@ -201,7 +206,7 @@ if weights_array is not None:
             st.error("Không có laptop nào thỏa mãn các ràng buộc cứng ở cột bên trái. Bạn hãy nới lỏng ngân sách hoặc giảm yêu cầu dung lượng nhé!")
         else:
             # 2. Chạy thuật toán lõi
-            top3_df = calculate_topsis(filtered_df, weights_array, top_n=3)
+            top3_df = calculate_topsis(filtered_df, weights_array, top_n=top_n_results)
             
             # 3. Cảnh báo Outlier cho Top 1
             top1_price = top3_df.iloc[0]['price']
@@ -213,7 +218,7 @@ if weights_array is not None:
                 st.success(f"Ma trận hợp lệ! Tỷ số CR = {cr_score:.3f}")
                 
             # 4. Hiển thị kết quả dạng List Card (UI E-commerce)
-            st.subheader("🏆 TOP 3 LAPTOP TỐT NHẤT CHO BẠN")
+            st.subheader(f"🏆 TOP {top_n_results} LAPTOP TỐT NHẤT CHO BẠN")
             st.markdown("---")
             
             # Khởi tạo tiêu đề các cột
