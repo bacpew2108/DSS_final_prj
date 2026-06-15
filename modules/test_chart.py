@@ -5,7 +5,7 @@ from charts import plot_radar_chart
 
 # Dữ liệu mẫu (Lấy từ file CSV thực tế của bạn)
 csv_data = """product_name,price,ram_capacity,storage,cpu_point,gpu_point,weight
-MSI Titan 18 HX Dragon Edition,162.0,96,10240,83.0,67.0,3.6
+MSI Titan 18 HX Dragon Edition,16.0,96,10240,83.0,67.0,3.6
 Acer NITRO V15-ANV15,20.2,8,512,50.0,33.0,1.8
 ASUS TUF Gaming A14 FA401UU,24.7,16,512,61.0,33.0,1.5"""
 
