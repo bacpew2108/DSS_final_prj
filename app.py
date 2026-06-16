@@ -137,8 +137,8 @@ with tab2:
 
 # TAB 3: TOÀN DIỆN (MA TRẬN 6x6)
 with tab3:
-    st.warning("Bạn đang thiết lập Ma trận so sánh cặp AHP (15 cặp). Nếu chỉ số Nhất quán CR > 0.1, hệ thống sẽ cảnh báo.")
-    st.markdown("*(Thang đo: 1 = Bằng nhau, 9 = Cực kỳ quan trọng hơn)*")
+    st.warning("Bạn đang thiết lập Ma trận so sánh cặp AHP (15 cặp). Nếu chỉ số Nhất quán CR >= 0.1, hệ thống sẽ cảnh báo.")
+    st.markdown("*(**Hướng dẫn:** Kéo về bên nào thì tiêu chí bên đó quan trọng hơn. Ở giữa = Quan trọng ngang nhau)*")
     
     # Khởi tạo session state cho CR
     if 'ahp_cr' not in st.session_state:
@@ -149,71 +149,87 @@ with tab3:
     labels = ['Giá', 'RAM', 'Ổ cứng', 'CPU', 'GPU', 'Trọng lượng']
     ahp_matrix = np.ones((6, 6))
     
-    # Placeholder để hiển thị CR (sẽ cập nhật sau)
+    # Placeholder để hiển thị CR
     cr_placeholder = st.empty()
+
+    # Hàm map giá trị slider (-8 đến 8) sang thang đo Saaty (1/9 đến 9)
+    def map_slider_to_ahp(slider_val):
+        if slider_val == 0:
+            return 1.0
+        elif slider_val < 0:
+            # Kéo về bên trái (Tiêu chí i quan trọng hơn)
+            return float(abs(slider_val) + 1)
+        else:
+            # Kéo về bên phải (Tiêu chí j quan trọng hơn)
+            return 1.0 / float(slider_val + 1)
     
     with st.expander("Nhóm so sánh: GIÁ CẢ so với các tiêu chí khác", expanded=True):
         i = 0
         for j in range(1, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
-            ahp_matrix[i, j] = val
-            ahp_matrix[j, i] = 1.0 / val
+            val = st.slider(f"{labels[i]}  <------------------------>  {labels[j]}", -8, 8, 0, key=f"ahp_{i}_{j}")
+            ahp_val = map_slider_to_ahp(val)
+            ahp_matrix[i, j] = ahp_val
+            ahp_matrix[j, i] = 1.0 / ahp_val
 
     with st.expander("Nhóm so sánh: DUNG LƯỢNG RAM so với các tiêu chí khác"):
         i = 1
         for j in range(2, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
-            ahp_matrix[i, j] = val
-            ahp_matrix[j, i] = 1.0 / val
+            val = st.slider(f"{labels[i]}  <------------------------>  {labels[j]}", -8, 8, 0, key=f"ahp_{i}_{j}")
+            ahp_val = map_slider_to_ahp(val)
+            ahp_matrix[i, j] = ahp_val
+            ahp_matrix[j, i] = 1.0 / ahp_val
 
     with st.expander("Nhóm so sánh: Ổ CỨNG so với các tiêu chí khác"):
         i = 2
         for j in range(3, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
-            ahp_matrix[i, j] = val
-            ahp_matrix[j, i] = 1.0 / val
+            val = st.slider(f"{labels[i]}  <------------------------>  {labels[j]}", -8, 8, 0, key=f"ahp_{i}_{j}")
+            ahp_val = map_slider_to_ahp(val)
+            ahp_matrix[i, j] = ahp_val
+            ahp_matrix[j, i] = 1.0 / ahp_val
 
     with st.expander("Nhóm so sánh: HIỆU NĂNG CPU so với các tiêu chí khác"):
         i = 3
         for j in range(4, 6):
-            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
-            ahp_matrix[i, j] = val
-            ahp_matrix[j, i] = 1.0 / val
+            val = st.slider(f"{labels[i]}  <------------------------>  {labels[j]}", -8, 8, 0, key=f"ahp_{i}_{j}")
+            ahp_val = map_slider_to_ahp(val)
+            ahp_matrix[i, j] = ahp_val
+            ahp_matrix[j, i] = 1.0 / ahp_val
 
     with st.expander("Nhóm so sánh: HIỆU NĂNG GPU so với TRỌNG LƯỢNG"):
         i = 4
         j = 5
-        val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
-        ahp_matrix[i, j] = val
-        ahp_matrix[j, i] = 1.0 / val
+        val = st.slider(f"{labels[i]}  <------------------------>  {labels[j]}", -8, 8, 0, key=f"ahp_{i}_{j}")
+        ahp_val = map_slider_to_ahp(val)
+        ahp_matrix[i, j] = ahp_val
+        ahp_matrix[j, i] = 1.0 / ahp_val
 
     # Tính CR sau tất cả slider và cập nhật placeholder ở đầu
     from modules.topsis_engine import calculate_ahp_weights_with_cr
     weights_check, cr_check, is_valid_check = calculate_ahp_weights_with_cr(ahp_matrix)
     
-    # Cập nhật session state
     st.session_state.ahp_cr = cr_check
     st.session_state.ahp_valid = is_valid_check
     
-    # Cập nhật placeholder ở đầu với giá trị mới
+    # Cập nhật UI tính hợp lệ của ma trận
     with cr_placeholder.container():
-        st.markdown("### Tính Hợp Lệ Của Ma Trận AHP")
+        st.markdown("### Kiểm tra Hợp Lệ Ma Trận AHP")
         col1, col2, col3 = st.columns(3)
         with col1:
-            st.metric("Tỷ số nhất quán (CR)", f"{st.session_state.ahp_cr:.4f}", delta="< 0.1 = Hợp lệ")
+            st.metric("Tỷ số nhất quán (CR)", f"{st.session_state.ahp_cr:.4f}", delta="< 0.1 = Hợp lệ", delta_color="inverse")
         with col2:
             if st.session_state.ahp_valid:
-                st.success("Ma trận hợp lệ!")
+                st.success("✅ Ma trận hợp lệ!")
             else:
-                st.error("Ma trận chưa hợp lệ!")
+                st.error("❌ Ma trận mâu thuẫn!")
         with col3:
-            st.info(f"Ngưỡng: CR < 0.1")
+            st.info("Chỉ số CR giúp đảm bảo bạn không đánh giá logic vòng tròn (VD: A>B, B>C nhưng C>A)")
         st.markdown("---")
     
     st.markdown("<br>", unsafe_allow_html=True)
     
     if st.button("Chạy Tư Vấn (Chế độ 3)", use_container_width=True):
-        weights_array, cr_score, is_ahp_valid = get_weights_mode_3(ahp_matrix, "custom")
+        # FIX LỖI Ở ĐÂY: Hàm get_weights_mode_3 chỉ nhận 1 tham số
+        weights_array, cr_score, is_ahp_valid = get_weights_mode_3(ahp_matrix)
 
 # --- LỚP XỬ LÝ: KẾT QUẢ TOPSIS & HIỂN THỊ ---
 if weights_array is not None:
