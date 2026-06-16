@@ -74,3 +74,6 @@ streamlit run app.py
 ```
 
 Ứng dụng sẽ tự động mở trên trình duyệt tại địa chỉ: `http://localhost:8502` (hoặc `8501`).
+
+
+Thoát venv: deactivate
