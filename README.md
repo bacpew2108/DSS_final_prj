@@ -6,32 +6,34 @@ DSS_Laptop_System/
 ├── analysis/                       
 │   └── phan_tich_du_lieu_laptop.ipynb  # Notebook phân tích & EDA
 │
-├── assets/                         # Biểu đồ xuất từ EDA
+├── assets/                         # Biểu đồ xuất ra từ quá trình EDA
 │
 ├── data/                           
-│   ├── laptops_dataset_raw.csv         # Data gốc
-│   └── laptops_dataset_cleaned.csv     # Data chuẩn hóa
+│   ├── laptops_dataset_raw.csv         # Dữ liệu gốc (Crawl)
+│   └── laptops_dataset_cleaned.csv     # Dữ liệu đã qua tiền xử lý (ETL)
+│
+├── models/                         # Lưu trữ mô hình Machine Learning (Joblib)
+│   └── rf_best_model.joblib            # Mô hình Random Forest đã được huấn luyện
 │
 ├── modules/                        
-│   ├── laptop_etl/                 # Package xử lý dữ liệu
-│   │   ├── __init__.py             
-│   │   ├── benchmark.py                # Fetch & match điểm CPU/GPU
-│   │   ├── hardware.py                 # Weight, màu sắc, brand, màn hình, GPU memory
-│   │   ├── normalization.py            # Chuẩn hóa warranty & hệ điều hành
-│   │   ├── pipeline.py                 # check_duplicates, fill_fields, clean_laptops_csv
-│   │   ├── price_currency.py           # Chuyển đổi giá EGP → VND
-│   │   ├── ram_storage.py              # Parse dung lượng RAM & ổ cứng
-│   │   └── utils.py                    # Chuẩn hóa tên cột và giá trị
+│   ├── laptop_etl/                 # Package ETL xử lý & chuẩn hóa dữ liệu
+│   │   ├── benchmark.py                # Lấy & match điểm CPU/GPU
+│   │   ├── hardware.py                 # Chuẩn hóa Cân nặng, Màn hình, GPU, v.v.
+│   │   ├── normalization.py            # Chuẩn hóa OS, Warranty
+│   │   ├── pipeline.py                 # File điều phối Pipeline ETL
+│   │   ├── price_currency.py           # Chuyển đổi ngoại tệ (EGP → VND)
+│   │   ├── ram_storage.py              # Parse dung lượng RAM & Ổ cứng
+│   │   └── utils.py                    # Utilities chuẩn hóa strings
 │   ├── __init__.py                 
-│   ├── charts.py                   # Code vẽ biểu đồ Plotly/Radar
-│   ├── laptop_etl.py               # Xử lý dữ liệu laptop
-│   ├── test.py                     # Unit test
-│   ├── test_ve.py                  # Test vẽ biểu đồ
-│   └── topsis_engine.py            # Thuật toán TOPSIS
+│   ├── charts.py                   # Thư viện vẽ biểu đồ Plotly/Radar trên UI
+│   ├── random_forest_engine.py     # Module định nghĩa 8 kịch bản Random Forest
+│   ├── topsis_engine.py            # Module toán học: Lọc cứng, AHP & TOPSIS
+│   └── test.py                     # File Unit Test kiểm thử thuật toán Backend
 │
-├── app.py                          # File chạy chính - UI Streamlit
+├── app.py                          # File chạy chính - Giao diện Web Streamlit
+├── train_model.py                  # Script huấn luyện & đóng gói mô hình ML (MLOps)
 ├── README.md                       
-└── requirements.txt                # Danh sách thư viện cần cài đặt
+└── requirements.txt                # Danh sách thư viện cần thiết
 ```
 
 ## Hướng dẫn cài đặt và chạy ứng dụng
@@ -67,7 +69,11 @@ python3 -m venv venv
 ```bash
 pip install -r requirements.txt
 ```
-
+**5. Huấn luyện mô hình**
+Hệ thống áp dụng chuẩn MLOps, tách biệt quá trình Training và Inference. Bạn cần chạy lệnh này để máy tính tự động huấn luyện mô hình Random Forest và lưu vào thư mục models/.
+```bash
+python train_model.py
+```
 **5. Khởi chạy ứng dụng**
 ```bash
 streamlit run app.py

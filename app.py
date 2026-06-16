@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
-
+import joblib
 # Import các hàm xử lý từ backend (TV2 & TV3)
 from modules.topsis_engine import (
     apply_hard_filters, map_segment_to_budget,
@@ -12,9 +12,27 @@ from modules.topsis_engine import (
     check_outlier_alert, calculate_topsis
 )
 from modules.charts import plot_radar_chart
-
 # Import Random Forest engine (dùng để dự đoán giá ngầm trong TOPSIS)
 from modules.random_forest_engine import predict_price
+
+
+# --- LOAD MÔ HÌNH ĐÃ HUẤN LUYỆN (INFERENCE) ---
+@st.cache_resource
+def load_rf_model():
+    """
+    Load mô hình Random Forest đã được train sẵn từ ổ cứng.
+    Siêu nhanh, không tốn RAM và CPU để train lại.
+    """
+    model_path = "models/rf_best_model.joblib"
+    try:
+        model = joblib.load(model_path)
+        return model
+    except FileNotFoundError:
+        st.error(f"❌ Không tìm thấy model tại `{model_path}`. Vui lòng chạy file `train_model.py` trước!")
+        st.stop()
+
+# Gọi hàm load model
+rf_model_bg = load_rf_model()
 
 # --- CẤU HÌNH TRANG ---
 st.set_page_config(page_title="Hệ Hỗ Trợ Ra Quyết Định Mua Laptop", layout="wide")
