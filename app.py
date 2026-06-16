@@ -1,117 +1,347 @@
-# streamlit run app.py
+# streamlit run app.py  
 import streamlit as st
 import pandas as pd
+import numpy as np
+import plotly.graph_objects as go
+import plotly.express as px
 
-# Import các hàm từ các thành viên khác theo đúng cấu trúc thư mục
-from modules.topsis_engine import calculate_topsis
-from modules.charts import draw_radar_chart, draw_weights_donut_chart, draw_match_score_gauge
+# Import các hàm xử lý từ backend (TV2 & TV3)
+from modules.topsis_engine import (
+    apply_hard_filters, map_segment_to_budget,
+    get_weights_mode_1, get_weights_mode_2, get_weights_mode_3,
+    check_outlier_alert, calculate_topsis
+)
+from modules.charts import plot_radar_chart
+
+# Import Random Forest engine (dùng để dự đoán giá ngầm trong TOPSIS)
+from modules.random_forest_engine import predict_price
 
 # --- CẤU HÌNH TRANG ---
-st.set_page_config(page_title="Hệ Hỗ Trợ Quyết Định Mua Laptop", layout="wide")
+st.set_page_config(page_title="Hệ Hỗ Trợ Ra Quyết Định Mua Laptop", layout="wide")
+st.title("Hệ Thống Tư Vấn Laptop Đa Tiêu Chí")
 
-st.title("💻 Hệ Thống Tư Vấn Mua Laptop ")
-
-# --- DỰNG LAYOUT: SIDEBAR (Bộ lọc bên trái) ---
-st.sidebar.header("Tiêu chí quan tâm")
-
-# Code Thanh trượt (Input) từ 1 đến 10
-w_price = st.sidebar.slider("Quan tâm Giá", 1, 10, 5)
-w_ram = st.sidebar.slider("Quan tâm RAM", 1, 10, 5)
-w_storage = st.sidebar.slider("Quan tâm Ổ cứng", 1, 10, 5)
-w_cpu = st.sidebar.slider("Quan tâm CPU", 1, 10, 5)
-w_gpu = st.sidebar.slider("Quan tâm GPU", 1, 10, 5)
-w_weight = st.sidebar.slider("Quan tâm Trọng lượng", 1, 10, 5)
-
-# Thu thập 6 số, tính tổng và quy ra phần trăm (%) lưu vào weights_array
-total_weight = w_price + w_ram + w_storage + w_cpu + w_gpu + w_weight
-weights_array = [
-    w_price / total_weight,
-    w_ram / total_weight,
-    w_storage / total_weight,
-    w_cpu / total_weight,
-    w_gpu / total_weight,
-    w_weight / total_weight
-]
-
-# --- LOAD DATA SẠCH CỦA TV1 ---
+# --- LỚP DỮ LIỆU (DATA LAYER) ---
 @st.cache_data
 def load_data():
-    # Đọc file laptops_dataset_cleaned.csv từ thư mục data
     df = pd.read_csv("data/laptops_dataset_cleaned.csv")
     
-    # Đổi tên cột để khớp với code của cả nhóm (Huy và Lanh)
-    df = df.rename(columns={
-        'brand': 'Brand',
-        'product_name': 'Tên_Máy'
-    })
+    # Chuẩn hóa tên cột để khớp với các hàm xử lý
+    if 'product_name' in df.columns:
+        df = df.rename(columns={'product_name': 'Tên_Máy'})
+    if 'brand' not in df.columns and 'Brand' in df.columns:
+        df = df.rename(columns={'Brand': 'brand'})
+        
+    # Chuẩn hóa đơn vị Giá về Triệu VNĐ để đồng bộ thuật toán và giao diện
+    if 'price' in df.columns and df['price'].max() > 1000:
+        df['price'] = df['price'] / 1000000.0
+        
     return df
 
 try:
     df = load_data()
 except FileNotFoundError:
-    st.error("⚠️ Chưa tìm thấy file `data/laptops_dataset_cleaned.csv`. Hãy kiểm tra lại thư mục `data/`")
+    st.error("Chưa tìm thấy file `data/laptops_dataset_cleaned.csv`. Hãy kiểm tra lại thư mục `data/`")
     st.stop()
 
-# --- BỘ LỌC TĨNH (Rule-based) ---
-st.sidebar.markdown("---")
-st.sidebar.header("🔍 Lọc cơ bản")
-if 'Brand' in df.columns:
-    brands = ["Tất cả"] + list(df['Brand'].dropna().unique())
-    selected_brand = st.selectbox("Chọn Thương hiệu (Hãng)", brands)
-else:
-    selected_brand = "Tất cả"
-    st.sidebar.warning("File data không có cột 'Brand' để lọc.")
+# --- TRAIN RF MODEL NGẦM (1 LẦN KHI KHỞI ĐỘNG) ---
+@st.cache_resource
+def load_rf_model(_df):
+    """
+    Huấn luyện ngầm mô hình RF tốt nhất (Combo Tối ưu 2) khi app khởi động.
+    Dùng cache_resource để model được giữ trong RAM — không train lại mỗi lần reload.
+    """
+    from modules.random_forest_engine import prepare_rf_data, HYPERPARAMETER_SCENARIOS
+    from sklearn.ensemble import RandomForestRegressor
+    X, y = prepare_rf_data(_df)
+    # Kịch bản 8: Combo Tối ưu 2 — mô hình mạnh nhất theo thiết kế nhóm
+    best_params = HYPERPARAMETER_SCENARIOS[7]["params"]
+    model = RandomForestRegressor(**best_params)
+    model.fit(X, y)
+    return model
 
-# --- LẮP GHÉP LOGIC & HIỂN THỊ KẾT QUẢ ---
-# Tạo nút bấm
-if st.sidebar.button("Tư vấn Laptop"):
+rf_model_bg = load_rf_model(df)
+
+# --- LỚP GIAO DIỆN: RÀNG BUỘC CỨNG (HARD FILTERS) ---
+st.sidebar.header("1. Lọc Ràng Buộc Cứng")
+segment = st.sidebar.selectbox(
+    "Phân khúc ngân sách", 
+    ["Tất cả phân khúc", "Rẻ (< 15 Triệu)", "Phổ thông (15 - 25 Triệu)", "Cao cấp (> 25 Triệu)"],
+    index=1
+)
+price_range = map_segment_to_budget(segment)
+
+ram_option = st.sidebar.selectbox("RAM tối thiểu (GB)", ["Tất cả", 8, 16, 32, 64], index=1)
+min_ram = 0 if ram_option == "Tất cả" else ram_option
+
+storage_option = st.sidebar.selectbox("Ổ cứng tối thiểu (GB)", ["Tất cả", 256, 512, 1024], index=1)
+min_storage = 0 if storage_option == "Tất cả" else storage_option
+
+brands_list = df['brand'].dropna().unique().tolist()
+selected_brands = st.sidebar.multiselect("Thương hiệu ưu tiên (Bỏ trống để tìm tất cả)", brands_list)
+
+top_n_results = st.sidebar.selectbox("Số lượng laptop đưa ra (Top N)", [1, 2, 3, 4, 5, 7, 10], index=2)
+
+# --- LỚP NGHIỆP VỤ: 3 CHẾ ĐỘ VẬN HÀNH (MODES) ---
+tab1, tab2, tab3 = st.tabs([
+    "Chế độ 1: Gợi ý Nhanh",
+    "Chế độ 2: Tùy chọn Thu nhỏ",
+    "Chế độ 3: Toàn diện (Chuyên gia)",
+])
+
+weights_array = None
+is_ahp_valid = True
+cr_score = 0.0
+
+# TAB 1: GỢI Ý NHANH
+with tab1:
+    st.info("Hệ thống tự động sử dụng bộ trọng số AHP đã được các chuyên gia tối ưu hóa.")
+    profile_1 = st.selectbox("Bạn thuộc nhóm đối tượng nào?", ["Sinh viên / Văn phòng", "Game thủ / Đồ họa", "Lập trình viên / Kỹ sư dữ liệu"], key="p1")
+    profile_map = {"Sinh viên / Văn phòng": "student", "Game thủ / Đồ họa": "gamer", "Lập trình viên / Kỹ sư dữ liệu": "developer"}
     
-    # 1. Lọc data sạch theo hãng trước
-    filtered_df = df.copy()
-    if selected_brand != "Tất cả" and 'Brand' in filtered_df.columns:
-        filtered_df = filtered_df[filtered_df['Brand'] == selected_brand]
-        
-    if filtered_df.empty:
-        st.warning("Không tìm thấy mẫu laptop nào thuộc hãng này!")
-    else:
-        st.success("Đã tìm thấy các cấu hình phù hợp.")
-        
-        # 2. Gửi data đã lọc + mảng trọng số vào hàm calculate_topsis() của TV2
-        # Ép top_n = 3 để hiển thị 3 máy đúng yêu cầu
-        top3_df = calculate_topsis(filtered_df, weights_array, top_n=3)
-        
-        # 3. Hiển thị kết quả ra màn hình
-        st.subheader("🏆 Top 3 Laptop Phù Hợp Nhất")
-        
-        # Chỉ chọn hiển thị các cột quan trọng cho người dùng dễ nhìn
-        display_cols = ['Tên_Máy', 'Brand', 'price', 'ram_capacity', 'storage', 'cpu_point', 'gpu_point', 'weight', 'TOPSIS_Score']
-        actual_display_cols = [col for col in display_cols if col in top3_df.columns]
-        
-        st.dataframe(top3_df[actual_display_cols], use_container_width=True)
-        
-        # --- HIỂN THỊ BIỂU ĐỒ TỪ TV3 (HUY) ---
-        st.markdown("---")
-        
-        # Hàng trên cùng: Đồng hồ Gauge cho máy Top 1
-        st.subheader("🔥 Mức độ phù hợp của lựa chọn Top 1")
-        try:
-            top1_score = top3_df['TOPSIS_Score'].iloc[0]
-            fig_gauge = draw_match_score_gauge(top1_score)
-            st.plotly_chart(fig_gauge, use_container_width=True)
-        except KeyError:
-            st.error("⚠️ Lỗi: Không tìm thấy cột 'TOPSIS_Score'. Kiểm tra lại hàm calculate_topsis.")
+    if st.button("Chạy Tư Vấn (Chế độ 1)", use_container_width=True):
+        weights_array = get_weights_mode_1(profile_map[profile_1])
 
-        # Hàng dưới: Chia 2 cột cho Radar và Donut
-        col1, col2 = st.columns(2)
-        
+# TAB 2: THU NHỎ
+with tab2:
+    st.info("Tùy chỉnh độ quan trọng (từ 1 đến 10) cho các thông số cốt lõi. Các thông số phụ sẽ được ẩn để tránh gây nhiễu.")
+    profile_2 = st.selectbox("Bạn thuộc nhóm đối tượng nào?", ["Sinh viên / Văn phòng", "Game thủ / Đồ họa", "Lập trình viên / Kỹ sư dữ liệu"], key="p2")
+    p_code = profile_map[profile_2]
+    
+    scores = {}
+    col1, col2 = st.columns(2)
+    
+    if p_code == 'student':
         with col1:
-            st.subheader("📊 Phân tích sức mạnh phần cứng")
-            fig_radar = draw_radar_chart(top3_df)
-            st.plotly_chart(fig_radar, use_container_width=True)
-            
+            scores['price'] = st.slider("Quan tâm Giá bán", 1, 10, 8, key="t2_p1")
+            scores['weight'] = st.slider("Quan tâm Mỏng nhẹ", 1, 10, 7, key="t2_w1")
         with col2:
-            st.subheader("🎯 Hồ sơ nhu cầu của bạn")
-            fig_donut = draw_weights_donut_chart(weights_array)
-            st.plotly_chart(fig_donut, use_container_width=True)
-else:
-    st.info("Hãy điều chỉnh các thanh trượt bên trái và bấm **Tư vấn Laptop** để xem kết quả.")
+            scores['cpu'] = st.slider("Hiệu năng CPU", 1, 10, 5, key="t2_c1")
+            scores['ram'] = st.slider("Dung lượng RAM", 1, 10, 5, key="t2_r1")
+    elif p_code == 'gamer':
+        with col1:
+            scores['gpu'] = st.slider("Hiệu năng Card Đồ họa (GPU)", 1, 10, 9, key="t2_g2")
+            scores['cpu'] = st.slider("Hiệu năng CPU", 1, 10, 8, key="t2_c2")
+        with col2:
+            scores['ram'] = st.slider("Dung lượng RAM", 1, 10, 7, key="t2_r2")
+            scores['price'] = st.slider("Quan tâm Giá bán", 1, 10, 5, key="t2_p2")
+    elif p_code == 'developer':
+        with col1:
+            scores['cpu'] = st.slider("Hiệu năng CPU", 1, 10, 9, key="t2_c3")
+            scores['ram'] = st.slider("Dung lượng RAM", 1, 10, 9, key="t2_r3")
+        with col2:
+            scores['storage'] = st.slider("Dung lượng Ổ cứng", 1, 10, 6, key="t2_s3")
+            scores['price'] = st.slider("Quan tâm Giá bán", 1, 10, 5, key="t2_p3")
+            
+    if st.button("Chạy Tư Vấn (Chế độ 2)", use_container_width=True):
+        weights_array = get_weights_mode_2(p_code, scores)
+
+# TAB 3: TOÀN DIỆN (MA TRẬN 6x6)
+with tab3:
+    st.warning("Bạn đang thiết lập Ma trận so sánh cặp AHP (15 cặp). Nếu chỉ số Nhất quán CR > 0.1, hệ thống sẽ cảnh báo.")
+    st.markdown("*(Thang đo: 1 = Bằng nhau, 9 = Cực kỳ quan trọng hơn)*")
+    
+    # Khởi tạo session state cho CR
+    if 'ahp_cr' not in st.session_state:
+        st.session_state.ahp_cr = 0.0
+    if 'ahp_valid' not in st.session_state:
+        st.session_state.ahp_valid = True
+    
+    labels = ['Giá', 'RAM', 'Ổ cứng', 'CPU', 'GPU', 'Trọng lượng']
+    ahp_matrix = np.ones((6, 6))
+    
+    # Placeholder để hiển thị CR (sẽ cập nhật sau)
+    cr_placeholder = st.empty()
+    
+    with st.expander("Nhóm so sánh: GIÁ CẢ so với các tiêu chí khác", expanded=True):
+        i = 0
+        for j in range(1, 6):
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
+            ahp_matrix[i, j] = val
+            ahp_matrix[j, i] = 1.0 / val
+
+    with st.expander("Nhóm so sánh: DUNG LƯỢNG RAM so với các tiêu chí khác"):
+        i = 1
+        for j in range(2, 6):
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
+            ahp_matrix[i, j] = val
+            ahp_matrix[j, i] = 1.0 / val
+
+    with st.expander("Nhóm so sánh: Ổ CỨNG so với các tiêu chí khác"):
+        i = 2
+        for j in range(3, 6):
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
+            ahp_matrix[i, j] = val
+            ahp_matrix[j, i] = 1.0 / val
+
+    with st.expander("Nhóm so sánh: HIỆU NĂNG CPU so với các tiêu chí khác"):
+        i = 3
+        for j in range(4, 6):
+            val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
+            ahp_matrix[i, j] = val
+            ahp_matrix[j, i] = 1.0 / val
+
+    with st.expander("Nhóm so sánh: HIỆU NĂNG GPU so với TRỌNG LƯỢNG"):
+        i = 4
+        j = 5
+        val = st.slider(f"{labels[i]} so với {labels[j]}", 1.0, 9.0, 5.0, step=1.0, key=f"ahp_{i}_{j}")
+        ahp_matrix[i, j] = val
+        ahp_matrix[j, i] = 1.0 / val
+
+    # Tính CR sau tất cả slider và cập nhật placeholder ở đầu
+    from modules.topsis_engine import calculate_ahp_weights_with_cr
+    weights_check, cr_check, is_valid_check = calculate_ahp_weights_with_cr(ahp_matrix)
+    
+    # Cập nhật session state
+    st.session_state.ahp_cr = cr_check
+    st.session_state.ahp_valid = is_valid_check
+    
+    # Cập nhật placeholder ở đầu với giá trị mới
+    with cr_placeholder.container():
+        st.markdown("### Tính Hợp Lệ Của Ma Trận AHP")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Tỷ số nhất quán (CR)", f"{st.session_state.ahp_cr:.4f}", delta="< 0.1 = Hợp lệ")
+        with col2:
+            if st.session_state.ahp_valid:
+                st.success("Ma trận hợp lệ!")
+            else:
+                st.error("Ma trận chưa hợp lệ!")
+        with col3:
+            st.info(f"Ngưỡng: CR < 0.1")
+        st.markdown("---")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    if st.button("Chạy Tư Vấn (Chế độ 3)", use_container_width=True):
+        weights_array, cr_score, is_ahp_valid = get_weights_mode_3(ahp_matrix, "custom")
+
+# --- LỚP XỬ LÝ: KẾT QUẢ TOPSIS & HIỂN THỊ ---
+if weights_array is not None:
+    st.markdown("---")
+    
+    if not is_ahp_valid:
+        st.error(f"MA TRẬN KHÔNG NHẤT QUÁN! Tỷ số CR = {cr_score:.3f} (Vượt ngưỡng 0.1). Vui lòng điều chỉnh lại các thanh trượt ở Chế độ 3 sao cho logic hơn.")
+    else:
+        # 1. Lọc dữ liệu thô
+        filtered_df = apply_hard_filters(df, price_range, min_ram, min_storage, selected_brands)
+        
+        if filtered_df.empty:
+            st.error("Không có laptop nào thỏa mãn các ràng buộc cứng ở cột bên trái. Bạn hãy nới lỏng ngân sách hoặc giảm yêu cầu dung lượng nhé!")
+        else:
+            # 2. Chạy thuật toán lõi
+            top3_df = calculate_topsis(filtered_df, weights_array, top_n=top_n_results)
+            
+            # 3. Cảnh báo Outlier cho Top 1
+            top1_price = top3_df.iloc[0]['price']
+            alert_msg = check_outlier_alert(top1_price)
+            if alert_msg:
+                st.warning(alert_msg)
+                
+            if cr_score > 0:
+                st.success(f"Ma trận hợp lệ! Tỷ số CR = {cr_score:.3f}")
+                
+            # 4. Hiển thị kết quả dạng List Card (UI E-commerce)
+            st.subheader(f"Top {top_n_results} Laptop Tốt Nhất Cho Bạn")
+            st.markdown("---")
+
+            # Khởi tạo tiêu đề các cột
+            header_col1, header_col2, header_col3 = st.columns([2, 5, 2])
+            with header_col1: st.markdown("**Tên Sản Phẩm**")
+            with header_col2: st.markdown("**Thông Số Kỹ Thuật**")
+            with header_col3: st.markdown("**Giá Niêm Yết & RF Định Giá**")
+            st.markdown("---")
+
+            # Duyệt qua từng laptop trong Top N để render giao diện
+            for rank, (idx, row) in enumerate(top3_df.iterrows(), start=1):
+
+                # ── Chạy ngầm RF để dự đoán giá ──────────────────────────
+                rf_pred = predict_price(
+                    rf_model_bg,
+                    cpu_point  = float(row.get('cpu_point',  0)),
+                    gpu_point  = float(row.get('gpu_point',  0)),
+                    ram_gb     = float(row.get('ram_capacity', 0)),
+                    storage_gb = float(row.get('storage',    0)),
+                    weight_kg  = float(row.get('weight',     0)),
+                )
+                rf_price   = rf_pred["price_M"]
+                rf_segment = rf_pred["segment"]
+                actual_price = float(row.get('price', 0))
+                diff = rf_price - actual_price
+                diff_pct = (diff / actual_price * 100) if actual_price > 0 else 0
+
+                # Màu nhãn theo phân khúc RF
+                seg_color_map = {
+                    "Rẻ (<15 Triệu)":          "#48bb78",
+                    "Phổ thông (15–25 Triệu)": "#63b3ed",
+                    "Cao cấp (>25 Triệu)":     "#f6ad55",
+                }
+                seg_color = seg_color_map.get(rf_segment, "#63b3ed")
+
+                with st.container():
+                    col1, col2, col3 = st.columns([2, 5, 2])
+
+                    # Cột 1: Hãng, Tên máy, Rank badge
+                    with col1:
+                        rank_labels = ["#1", "#2", "#3"] + [f"#{i}" for i in range(4, 21)]
+                        st.markdown(f"### {rank_labels[rank-1]}")
+                        st.markdown(f"**{row.get('brand', 'Unknown')}**")
+                        st.markdown(f"{row.get('Tên_Máy', 'No Name')}")
+
+                    # Cột 2: Cấu hình kỹ thuật
+                    with col2:
+                        cpu_display = row.get('processor', f"{row.get('cpu_point', 0):.1f} Pts")
+                        gpu_display = row.get('video_graphics', f"{row.get('gpu_point', 0):.1f} Pts")
+                        screen_str = f"{row.get('display', '')} {row.get('display_resolution', '')} {row.get('display_refresh_rate', '')}".strip()
+                        screen_display = screen_str if screen_str else "Đang cập nhật"
+                        keyboard_display = row.get('keyboard', 'Đang cập nhật')
+                        st.markdown(f"""
+                        - **CPU:** {cpu_display}
+                        - **GPU:** {gpu_display}
+                        - **RAM:** {row.get('ram_capacity', 0)} GB
+                        - **Ổ cứng:** {row.get('storage', 0)} GB
+                        - **Màn hình:** {screen_display}
+                        - **Bàn phím:** {keyboard_display}
+                        - **Trọng lượng:** {row.get('weight', 0)} kg
+                        """)
+
+                    # Cột 3: Giá niêm yết + RF định giá
+                    with col3:
+                        # Giá thực tế
+                        st.markdown(f"### {actual_price:,.1f} Triệu VNĐ")
+
+                        # Độ phù hợp TOPSIS
+                        fit_score = row.get('TOPSIS_Score', 0) * 100
+                        st.markdown(f"Độ phù hợp: **{fit_score:.1f}%**")
+                        st.progress(int(fit_score))
+
+                        # ── Nhãn RF định giá ─────────────────────────────
+                        diff_icon = "▲" if diff > 0 else "▼" if diff < 0 else "●"
+                        diff_color = "#fc8181" if diff > 0 else "#68d391" if diff < 0 else "#a0aec0"
+                        st.markdown(f"""
+                        <div style="
+                            margin-top: 10px;
+                            background: linear-gradient(135deg, {seg_color}18, {seg_color}08);
+                            border: 1px solid {seg_color}55;
+                            border-radius: 10px;
+                            padding: 8px 10px;
+                            font-size: 0.82rem;
+                        ">
+                            <div style="color:#a0aec0; font-size:0.72rem; margin-bottom:3px;">RF Định giá</div>
+                            <div style="color:{seg_color}; font-weight:700; font-size:0.95rem;">
+                                {rf_price:,.1f} Tr
+                            </div>
+                            <div style="color:{diff_color}; font-size:0.75rem; margin-top:2px;">
+                                {diff_icon} {abs(diff):.1f} Tr ({abs(diff_pct):.0f}%)
+                            </div>
+                            <div style="color:{seg_color}; font-size:0.7rem; margin-top:2px;">
+                                {rf_segment}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+
+                st.markdown("---")
+
+            st.subheader("Biểu Đồ Phân Tích Cấu Hình")
+            fig = plot_radar_chart(top3_df, segment, name_col='Tên_Máy')
+            st.plotly_chart(fig, use_container_width=True)
+

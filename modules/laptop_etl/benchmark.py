@@ -1,4 +1,4 @@
-# modules/processing/benchmark.py
+# modules/laptop_etl/benchmark.py
 """Fetch và match điểm benchmark CPU/GPU từ NanoReview."""
 
 import re
@@ -162,9 +162,21 @@ def match_gpu_scores(df, bench_df):
         if not key:
             return None
 
-        # 1) exact substring match (preferred)
+        # Xử lý các dòng GPU ghi chung chung không có số model (vd: "NVIDIA GeForce RTX")
+        import re
+        if not re.search(r'\d', key):
+            if 'rtx' in key:
+                return 28.0  # Mức cơ bản của dòng RTX (tương đương RTX 3050)
+            elif 'gtx' in key:
+                return 22.0  # Mức cơ bản của dòng GTX (tương đương GTX 1650)
+            elif 'mx' in key:
+                return 15.0  # Dòng MX cơ bản
+            return None
+
+        # 1) word-boundary substring match (để tránh "rtx 40" khớp "rtx 4090")
+        pattern = r'\b' + re.escape(key) + r'\b'
         for i, bench in enumerate(names_lower):
-            if key in bench or bench in key:
+            if re.search(pattern, bench) or bench == key:
                 try:
                     return float(bench_df.iloc[i]['Diem_NanoReview'])
                 except Exception:

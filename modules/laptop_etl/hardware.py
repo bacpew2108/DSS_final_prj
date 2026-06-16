@@ -1,4 +1,4 @@
-# modules/processing/hardware.py
+# modules/laptop_etl/hardware.py
 """Parse và chuẩn hóa các thuộc tính phần cứng: trọng lượng, màu sắc,
 GPU memory, màn hình, thương hiệu."""
 
@@ -149,15 +149,41 @@ def infer_brand_from_product_name(product_name):
     return None
 
 
-def extract_display_resolution(display_text):
-    """Trích xuất độ phân giải màn hình (e.g. '1920 x 1080') từ chuỗi mô tả."""
-    text = clean_text_value(display_text)
+# Bảng chuyển đổi chữ số Arabic-Indic → ASCII
+_ARABIC_DIGIT_MAP = str.maketrans('٠١٢٣٤٥٦٧٨٩۰۱۲۳۴۵۶۷۸۹', '01234567890123456789')
+
+
+def normalize_display_resolution(s):
+    """Chuẩn hóa giá trị độ phân giải màn hình về dạng 'WxH' (e.g. '1920x1080').
+
+    Xử lý các trường hợp:
+    - Nhiều ký tự phân cách: 'x', 'X', '×', '*'
+    - Khoảng trắng xung quanh dấu phân cách: '1920 x 1080' → '1920x1080'
+    - Prefix tên marketing: 'FHD (1920 x 1080)', 'WQHD (2560 x 1440)',
+      '2.5K (2560 x 1600, WQXGA)', '3K (2880 x 1800)'
+    - Nội dung thừa: '2880 X 1920 (267 PPI)', 'FHD 1920x1080,'
+    - Dấu ngoặc/dấu phẩy thừa: '(1920x1080)', '1920 x 1080)'
+    - Ký tự số Arabic-Indic: '۱۹۲۰ x ۱۰۸۰'
+    - Trả về None nếu không tìm thấy pattern hợp lệ.
+    """
+    text = clean_text_value(s)
     if text is None:
         return None
-    match = re.search(r'(\d{3,4})\s*[x×*]\s*(\d{3,4})', text.lower())
+    # Chuyển chữ số Arabic-Indic sang ASCII
+    text = text.translate(_ARABIC_DIGIT_MAP)
+    # Tìm pattern WxH (3–4 chữ số × 3–4 chữ số)
+    match = re.search(r'(\d{3,4})\s*[xX×*]\s*(\d{3,4})', text)
     if not match:
         return None
-    return f"{match.group(1)} x {match.group(2)}"
+    return f"{match.group(1)}x{match.group(2)}"
+
+
+def extract_display_resolution(display_text):
+    """Trích xuất độ phân giải màn hình từ chuỗi mô tả màn hình đầy đủ.
+
+    Sử dụng normalize_display_resolution để đảm bảo output nhất quán.
+    """
+    return normalize_display_resolution(display_text)
 
 
 def extract_display_refresh_rate(display_text):
