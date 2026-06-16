@@ -18,6 +18,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, mean_absolute_percentage_error
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +145,8 @@ def run_all_scenarios(df: pd.DataFrame, test_size: float = 0.2) -> dict:
         y_pred = model.predict(X_test)
         mae    = mean_absolute_error(y_test, y_pred)
         r2     = r2_score(y_test, y_pred)
-
+        mape   = mean_absolute_percentage_error(y_test, y_pred)
+        
         # Cross-validation MAE (5-fold)
         cv_neg_mae = cross_val_score(
             RandomForestRegressor(**scenario["params"]),
@@ -158,21 +160,21 @@ def run_all_scenarios(df: pd.DataFrame, test_size: float = 0.2) -> dict:
             "model":    model,
             "mae":      mae,
             "r2":       r2,
+            "mape":     mape,
             "cv_mae_mean": cv_mae_mean,
             "cv_mae_std":  cv_mae_std,
             "y_pred":   y_pred,
         }
         results.append(res)
 
-        print(f"  #{scenario['id']:>2} {scenario['name']:<42} MAE={mae:.2f}M  R²={r2*100:.1f}%")
+        print(f"  #{scenario['id']:>2} {scenario['name']:<42} MAE={mae:.2f}M  MAPE={mape*100:.2f}%  R²={r2*100:.1f}%")
 
         if mae < best_mae:
             best_mae    = mae
             best_result = res
 
-    print("-" * 75)
-    print(f"🏆 MÔ HÌNH TỐI ƯU NHẤT: {best_result['scenario']['name']}")
-    print(f"   (Sai số trung bình: {best_mae:.2f} Triệu VNĐ)")
+    # Cập nhật dòng in ra màn hình cho đẹp:
+    print(f"  #{scenario['id']:>2} {scenario['name']:<42} MAE={mae:.2f}M  MAPE={mape*100:.2f}%  R²={r2*100:.1f}%")
 
     # Leaderboard (sort theo MAE tăng dần)
     summary_rows = []
@@ -183,6 +185,7 @@ def run_all_scenarios(df: pd.DataFrame, test_size: float = 0.2) -> dict:
             "n_estimators": r["model"].n_estimators,
             "max_depth": str(r["model"].max_depth) if r["model"].max_depth else "∞",
             "MAE (Triệu VNĐ)": round(r["mae"], 3),
+            "MAPE (%)": round(r["mape"] * 100, 2),
             "R² (%)": round(r["r2"] * 100, 2),
             "CV MAE (Tr)": round(r["cv_mae_mean"], 3),
             "CV Std": round(r["cv_mae_std"], 3),
