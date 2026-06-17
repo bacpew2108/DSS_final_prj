@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 import joblib
+
 # Import các hàm xử lý từ backend (TV2 & TV3)
 from modules.topsis_engine import (
     apply_hard_filters, map_segment_to_budget,
@@ -236,9 +237,9 @@ with tab3:
             st.metric("Tỷ số nhất quán (CR)", f"{st.session_state.ahp_cr:.4f}", delta="< 0.1 = Hợp lệ", delta_color="inverse")
         with col2:
             if st.session_state.ahp_valid:
-                st.success("✅ Ma trận hợp lệ!")
+                st.success("Ma trận hợp lệ!")
             else:
-                st.error("❌ Ma trận mâu thuẫn!")
+                st.error("Ma trận mâu thuẫn!")
         with col3:
             st.info("Chỉ số CR giúp đảm bảo bạn không đánh giá logic vòng tròn (VD: A>B, B>C nhưng C>A)")
         st.markdown("---")
@@ -301,15 +302,21 @@ if weights_array is not None:
                 rf_segment = rf_pred["segment"]
                 actual_price = float(row.get('price', 0))
                 diff = rf_price - actual_price
-                diff_pct = (diff / actual_price * 100) if actual_price > 0 else 0
+                diff_pct = (diff / rf_price * 100) if rf_price > 0 else 0
 
-                # Màu nhãn theo phân khúc RF
-                seg_color_map = {
-                    "Rẻ (<15 Triệu)":          "#48bb78",
-                    "Phổ thông (15–25 Triệu)": "#63b3ed",
-                    "Cao cấp (>25 Triệu)":     "#f6ad55",
-                }
-                seg_color = seg_color_map.get(rf_segment, "#63b3ed")
+                # 4. Áp dụng Business Rules phân loại nhãn (Bỏ icons)
+                if diff_pct > 40:
+                    badge_text = "CẢNH BÁO: GIÁ ẢO / LỪA ĐẢO"
+                    badge_color = "#e53e3e" # Đỏ nguy hiểm
+                elif diff_pct >= 20:
+                    badge_text = "MÓN HỜI (DEAL TỐT)"
+                    badge_color = "#38a169" # Xanh lá tích cực
+                elif diff_pct >= -20:
+                    badge_text = "GIÁ HỢP LÝ (AN TOÀN)"
+                    badge_color = "#3182ce" # Xanh dương tin cậy
+                else:
+                    badge_text = "BỊ ĐỊNH GIÁ CAO"
+                    badge_color = "#d69e2e" # Vàng/Cam cảnh báo
 
                 with st.container():
                     col1, col2, col3 = st.columns([2, 5, 2])
@@ -348,9 +355,38 @@ if weights_array is not None:
                         st.markdown(f"Độ phù hợp: **{fit_score:.1f}%**")
                         st.progress(int(fit_score))
 
-                        # ── Nhãn RF định giá ─────────────────────────────
+                        # ── Tính toán Ngưỡng Động (Dynamic Threshold) ──
+                        diff = rf_price - actual_price
+                        # Công thức chuẩn: (AI - Thực tế) / AI * 100
+                        diff_pct = (diff / rf_price * 100) if rf_price > 0 else 0
+
+                        # Phân loại đánh giá
+                        if diff_pct > 40:
+                            eval_text = "CẢNH BÁO: LỪA ĐẢO/GIÁ ẢO"
+                            eval_color = "#e53e3e" # Đỏ
+                        elif diff_pct >= 20:
+                            eval_text = "MÓN HỜI (DEAL TỐT)"
+                            eval_color = "#38a169" # Xanh lá
+                        elif diff_pct >= -20:
+                            eval_text = "GIÁ HỢP LÝ"
+                            eval_color = "#3182ce" # Xanh dương
+                        else:
+                            eval_text = "BỊ ĐỊNH GIÁ CAO"
+                            eval_color = "#d69e2e" # Cam
+
+                        # Màu nền theo phân khúc
+                        seg_color_map = {
+                            "Rẻ (<15 Triệu)":          "#48bb78",
+                            "Phổ thông (15–25 Triệu)": "#63b3ed",
+                            "Cao cấp (>25 Triệu)":     "#f6ad55",
+                        }
+                        seg_color = seg_color_map.get(rf_segment, "#63b3ed")
+                        
+                        # Icon tam giác mũi tên
                         diff_icon = "▲" if diff > 0 else "▼" if diff < 0 else "●"
                         diff_color = "#fc8181" if diff > 0 else "#68d391" if diff < 0 else "#a0aec0"
+
+                        # ── Render Giao diện (Mỏng nhẹ + Đánh giá) ──
                         st.markdown(f"""
                         <div style="
                             margin-top: 10px;
@@ -367,8 +403,11 @@ if weights_array is not None:
                             <div style="color:{diff_color}; font-size:0.75rem; margin-top:2px;">
                                 {diff_icon} {abs(diff):.1f} Tr ({abs(diff_pct):.0f}%)
                             </div>
-                            <div style="color:{seg_color}; font-size:0.7rem; margin-top:2px;">
-                                {rf_segment}
+                            <div style="color:{eval_color}; font-weight:700; font-size:0.75rem; margin-top:3px;">
+                                {eval_text}
+                            </div>
+                            <div style="color:{seg_color}; font-size:0.7rem; margin-top:4px;">
+                                Phân khúc: {rf_segment}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
@@ -378,4 +417,3 @@ if weights_array is not None:
             st.subheader("Biểu Đồ Phân Tích Cấu Hình")
             fig = plot_radar_chart(top3_df, segment, name_col='Tên_Máy')
             st.plotly_chart(fig, use_container_width=True)
-
