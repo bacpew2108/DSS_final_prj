@@ -64,7 +64,7 @@ def _apply_grid(fig) -> None:
 
 
 # =============================================================================
-# 1. Biểu đồ so sánh MAE – 8 kịch bản
+# 2. Biểu đồ so sánh MAE – 8 kịch bản
 # =============================================================================
 
 def plot_mae_comparison(results: list[dict], best_result: dict) -> go.Figure:
@@ -131,7 +131,7 @@ def plot_mae_comparison(results: list[dict], best_result: dict) -> go.Figure:
 
 
 # =============================================================================
-# 2. Biểu đồ R² – 8 kịch bản
+# 3. Biểu đồ R² – 8 kịch bản
 # =============================================================================
 
 def plot_r2_comparison(results: list[dict], best_result: dict) -> go.Figure:
@@ -164,9 +164,44 @@ def plot_r2_comparison(results: list[dict], best_result: dict) -> go.Figure:
     _apply_grid(fig)
     return fig
 
+# =============================================================================
+# 1. Biểu đồ so sánh MAPE (%) – 8 kịch bản (BỔ SUNG MỚI)
+# =============================================================================
+
+def plot_mape_comparison(results: list[dict], best_result: dict) -> go.Figure:
+    """
+    Biểu đồ cột MAPE (%) cho 8 kịch bản.
+    Cột tốt nhất được tô màu vàng.
+    """
+    short_ids = [f"#{r['scenario']['id']}" for r in results]
+    # mape đang ở dạng tỷ lệ (0-1), nhân 100 để đổi sang đơn vị %
+    mape_vals = [r["mape"] * 100 for r in results] 
+    best_id   = best_result["scenario"]["id"]
+    
+    # Sai số càng thấp càng tốt -> Tốt nhất tô vàng, còn lại tô màu Tím
+    bar_colors = [_GOLD if r["scenario"]["id"] == best_id else _PURPLE for r in results]
+
+    fig = go.Figure(go.Bar(
+        name="MAPE (%)",
+        x=short_ids, y=mape_vals,
+        marker_color=bar_colors,
+        text=[f"{v:.2f}%" for v in mape_vals],
+        textposition="outside",
+        hovertemplate="<b>#%{x}</b><br>MAPE = %{y:.2f}%<extra></extra>",
+    ))
+
+    fig.update_layout(
+        **_base_layout(height=400),
+        title=dict(text="📉 Sai số phần trăm tương đối trung bình MAPE (%) – 8 Biến thể", font=dict(size=16)),
+        xaxis_title="Kịch bản",
+        yaxis_title="MAPE (%)",
+        bargap=0.35,
+    )
+    _apply_grid(fig)
+    return fig
 
 # =============================================================================
-# 3. Actual vs Predicted scatter
+# 4. Actual vs Predicted scatter
 # =============================================================================
 
 def plot_actual_vs_predicted(
@@ -244,7 +279,7 @@ def plot_actual_vs_predicted(
 
 
 # =============================================================================
-# 4. Feature Importance
+# 5. Feature Importance
 # =============================================================================
 
 def plot_feature_importance(
@@ -331,12 +366,9 @@ def plot_residuals(
     ))
 
     # Đường trung tâm
-    fig.add_vline(x=0,    line_dash="dash", line_color=_GOLD, line_width=2,
-                  annotation_text=" Lý tưởng (0)", annotation_font_color=_GOLD)
-    fig.add_vline(x=mae,  line_dash="dot",  line_color=_RED,  line_width=1.5,
-                  annotation_text=f" +MAE={mae:.1f}", annotation_font_color=_RED)
-    fig.add_vline(x=-mae, line_dash="dot",  line_color=_RED,  line_width=1.5,
-                  annotation_text=f" -MAE", annotation_font_color=_RED)
+    fig.add_vline(x=0,    line_dash="dash", line_color=_GOLD, line_width=2,annotation_text=" Lý tưởng (0)", annotation_font_color=_GOLD)
+    fig.add_vline(x=mae,  line_dash="dot",  line_color=_RED,  line_width=1.5,annotation_text=f" +MAE={mae:.1f}", annotation_font_color=_RED)
+    fig.add_vline(x=-mae, line_dash="dot",  line_color=_RED,  line_width=1.5,annotation_text=f" -MAE", annotation_font_color=_RED)
 
     title_suffix = f" – {scenario_name}" if scenario_name else ""
     fig.update_layout(
@@ -509,6 +541,7 @@ _PNG_HEIGHT = None     # None → dùng height từ fig.layout.height
 _CHART_META = {
     "rf_1_mae_comparison":     "So sánh MAE – 8 biến thể",
     "rf_2_r2_comparison":      "So sánh R² (%) – 8 biến thể",
+    "rf_8_mape_comparison":    "So sánh MAPE (%) – 8 biến thể",
     "rf_3_actual_vs_predicted":"Actual vs Predicted (mô hình tốt nhất)",
     "rf_4_feature_importance": "Feature Importance (mô hình tốt nhất)",
     "rf_5_residuals":          "Phân phối sai số (Residuals)",
@@ -553,6 +586,7 @@ def save_all_charts(
     figures = {
         "rf_1_mae_comparison":     plot_mae_comparison(results, best_res),
         "rf_2_r2_comparison":      plot_r2_comparison(results, best_res),
+        "rf_8_mape_comparison":    plot_mape_comparison(results, best_res),
         "rf_3_actual_vs_predicted":plot_actual_vs_predicted(
                                        y_test, best_res["y_pred"],
                                        best_res["scenario"]["name"],
