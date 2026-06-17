@@ -14,7 +14,7 @@ from modules.topsis_engine import (
 )
 from modules.charts import plot_radar_chart
 # Import Random Forest engine (dùng để dự đoán giá ngầm trong TOPSIS)
-from modules.random_forest_engine import predict_price
+from modules.model_engine import predict_price
 
 
 # --- LOAD MÔ HÌNH ĐÃ HUẤN LUYỆN (INFERENCE) ---
@@ -62,23 +62,7 @@ except FileNotFoundError:
     st.error("Chưa tìm thấy file `data/laptops_dataset_cleaned.csv`. Hãy kiểm tra lại thư mục `data/`")
     st.stop()
 
-# --- TRAIN RF MODEL NGẦM (1 LẦN KHI KHỞI ĐỘNG) ---
-@st.cache_resource
-def load_rf_model(_df):
-    """
-    Huấn luyện ngầm mô hình RF tốt nhất (Combo Tối ưu 2) khi app khởi động.
-    Dùng cache_resource để model được giữ trong RAM — không train lại mỗi lần reload.
-    """
-    from modules.random_forest_engine import prepare_rf_data, HYPERPARAMETER_SCENARIOS
-    from sklearn.ensemble import RandomForestRegressor
-    X, y = prepare_rf_data(_df)
-    # Kịch bản 8: Combo Tối ưu 2 — mô hình mạnh nhất theo thiết kế nhóm
-    best_params = HYPERPARAMETER_SCENARIOS[7]["params"]
-    model = RandomForestRegressor(**best_params)
-    model.fit(X, y)
-    return model
 
-rf_model_bg = load_rf_model(df)
 
 # --- LỚP GIAO DIỆN: RÀNG BUỘC CỨNG (HARD FILTERS) ---
 st.sidebar.header("1. Lọc Ràng Buộc Cứng")

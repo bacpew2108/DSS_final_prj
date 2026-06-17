@@ -64,7 +64,7 @@ def _apply_grid(fig) -> None:
 
 
 # =============================================================================
-# 1. Biểu đồ so sánh MAE – 8 kịch bản
+# 2. Biểu đồ so sánh MAE – 8 kịch bản
 # =============================================================================
 
 def plot_mae_comparison(results: list[dict], best_result: dict) -> go.Figure:
@@ -131,7 +131,7 @@ def plot_mae_comparison(results: list[dict], best_result: dict) -> go.Figure:
 
 
 # =============================================================================
-# 2. Biểu đồ R² – 8 kịch bản
+# 3. Biểu đồ R² – 8 kịch bản
 # =============================================================================
 
 def plot_r2_comparison(results: list[dict], best_result: dict) -> go.Figure:
@@ -164,9 +164,44 @@ def plot_r2_comparison(results: list[dict], best_result: dict) -> go.Figure:
     _apply_grid(fig)
     return fig
 
+# =============================================================================
+# 1. Biểu đồ so sánh MAPE (%) – 8 kịch bản (BỔ SUNG MỚI)
+# =============================================================================
+
+def plot_mape_comparison(results: list[dict], best_result: dict) -> go.Figure:
+    """
+    Biểu đồ cột MAPE (%) cho 8 kịch bản.
+    Cột tốt nhất được tô màu vàng.
+    """
+    short_ids = [f"#{r['scenario']['id']}" for r in results]
+    # mape đang ở dạng tỷ lệ (0-1), nhân 100 để đổi sang đơn vị %
+    mape_vals = [r["mape"] * 100 for r in results] 
+    best_id   = best_result["scenario"]["id"]
+    
+    # Sai số càng thấp càng tốt -> Tốt nhất tô vàng, còn lại tô màu Tím
+    bar_colors = [_GOLD if r["scenario"]["id"] == best_id else _PURPLE for r in results]
+
+    fig = go.Figure(go.Bar(
+        name="MAPE (%)",
+        x=short_ids, y=mape_vals,
+        marker_color=bar_colors,
+        text=[f"{v:.2f}%" for v in mape_vals],
+        textposition="outside",
+        hovertemplate="<b>#%{x}</b><br>MAPE = %{y:.2f}%<extra></extra>",
+    ))
+
+    fig.update_layout(
+        **_base_layout(height=400),
+        title=dict(text="📉 Sai số phần trăm tương đối trung bình MAPE (%) – 8 Biến thể", font=dict(size=16)),
+        xaxis_title="Kịch bản",
+        yaxis_title="MAPE (%)",
+        bargap=0.35,
+    )
+    _apply_grid(fig)
+    return fig
 
 # =============================================================================
-# 3. Actual vs Predicted scatter
+# 4. Actual vs Predicted scatter
 # =============================================================================
 
 def plot_actual_vs_predicted(
@@ -174,6 +209,7 @@ def plot_actual_vs_predicted(
     y_pred: np.ndarray,
     scenario_name: str = "",
     mae: float | None = None,
+    mape: float | None = None,
     r2: float | None = None,
 ) -> go.Figure:
     """
@@ -220,10 +256,10 @@ def plot_actual_vs_predicted(
     ))
 
     # Annotation metric
-    if mae is not None and r2 is not None:
+    if mae is not None and mape is not None and r2 is not None:
         fig.add_annotation(
             x=0.02, y=0.97, xref="paper", yref="paper",
-            text=f"MAE = {mae:.2f} Tr  |  R² = {r2*100:.1f}%",
+            text=f"MAE = {mae:.2f} Tr  |  MAPE = {mape*100:.2f}%  |  R² = {r2*100:.1f}%",
             showarrow=False,
             font=dict(color=_GOLD, size=12),
             bgcolor="rgba(26,32,44,0.7)",
@@ -244,7 +280,7 @@ def plot_actual_vs_predicted(
 
 
 # =============================================================================
-# 4. Feature Importance
+# 5. Feature Importance
 # =============================================================================
 
 def plot_feature_importance(
@@ -331,12 +367,9 @@ def plot_residuals(
     ))
 
     # Đường trung tâm
-    fig.add_vline(x=0,    line_dash="dash", line_color=_GOLD, line_width=2,
-                  annotation_text=" Lý tưởng (0)", annotation_font_color=_GOLD)
-    fig.add_vline(x=mae,  line_dash="dot",  line_color=_RED,  line_width=1.5,
-                  annotation_text=f" +MAE={mae:.1f}", annotation_font_color=_RED)
-    fig.add_vline(x=-mae, line_dash="dot",  line_color=_RED,  line_width=1.5,
-                  annotation_text=f" -MAE", annotation_font_color=_RED)
+    fig.add_vline(x=0,    line_dash="dash", line_color=_GOLD, line_width=2,annotation_text=" Lý tưởng (0)", annotation_font_color=_GOLD)
+    fig.add_vline(x=mae,  line_dash="dot",  line_color=_RED,  line_width=1.5,annotation_text=f" +MAE={mae:.1f}", annotation_font_color=_RED)
+    fig.add_vline(x=-mae, line_dash="dot",  line_color=_RED,  line_width=1.5,annotation_text=f" -MAE", annotation_font_color=_RED)
 
     title_suffix = f" – {scenario_name}" if scenario_name else ""
     fig.update_layout(
@@ -367,7 +400,7 @@ def plot_learning_curve(df, test_size: float = 0.2) -> go.Figure:
     from sklearn.ensemble import RandomForestRegressor
     from sklearn.model_selection import train_test_split
     from sklearn.metrics import mean_absolute_error
-    from modules.random_forest_engine import prepare_rf_data
+    from modules.model_engine import prepare_rf_data
 
     X, y = prepare_rf_data(df)
     X_train, X_test, y_train, y_test = train_test_split(
@@ -433,12 +466,12 @@ def plot_scenario_heatmap(results: list[dict]) -> go.Figure:
     Metrics: MAE (Test), CV MAE, R²
     """
     sc_names = [f"#{r['scenario']['id']} {r['scenario']['name']}" for r in results]
-    metrics  = ["MAE (Test)", "CV MAE (5-fold)", "R² (%)"]
+    metrics  = ["MAE (Test)", "MAPE (%)", "R² (%)"]
 
     # Chuẩn hóa min-max mỗi metric về [0, 1] để so sánh trên cùng thang
     raw = {
         "MAE (Test)":     np.array([r["mae"]          for r in results]),
-        "CV MAE (5-fold)":np.array([r["cv_mae_mean"]  for r in results]),
+        "MAPE (%)":       np.array([r["mape"] * 100   for r in results]),
         "R² (%)":         np.array([r["r2"] * 100     for r in results]),
     }
 
@@ -452,7 +485,7 @@ def plot_scenario_heatmap(results: list[dict]) -> go.Figure:
 
     z = np.column_stack([
         norm(raw["MAE (Test)"],      invert=True),
-        norm(raw["CV MAE (5-fold)"], invert=True),
+        norm(raw["MAPE (%)"],        invert=True),
         norm(raw["R² (%)"],          invert=False),
     ])
 
@@ -461,7 +494,7 @@ def plot_scenario_heatmap(results: list[dict]) -> go.Figure:
     for r in results:
         text.append([
             f"{r['mae']:.2f}",
-            f"{r['cv_mae_mean']:.2f}",
+            f"{r['mape']*100:.2f}%",
             f"{r['r2']*100:.1f}%",
         ])
 
@@ -509,11 +542,12 @@ _PNG_HEIGHT = None     # None → dùng height từ fig.layout.height
 _CHART_META = {
     "rf_1_mae_comparison":     "So sánh MAE – 8 biến thể",
     "rf_2_r2_comparison":      "So sánh R² (%) – 8 biến thể",
-    "rf_3_actual_vs_predicted":"Actual vs Predicted (mô hình tốt nhất)",
-    "rf_4_feature_importance": "Feature Importance (mô hình tốt nhất)",
-    "rf_5_residuals":          "Phân phối sai số (Residuals)",
-    "rf_6_learning_curve":     "Learning Curve – MAE theo số cây",
-    "rf_7_scenario_heatmap":   "Heatmap hiệu năng 8 kịch bản",
+    "rf_3_mape_comparison":    "So sánh MAPE (%) – 8 biến thể",
+    "rf_4_actual_vs_predicted":"Actual vs Predicted (mô hình tốt nhất)",
+    "rf_5_feature_importance": "Feature Importance (mô hình tốt nhất)",
+    "rf_6_residuals":          "Phân phối sai số (Residuals)",
+    "rf_7_learning_curve":     "Learning Curve – MAE theo số cây",
+    "rf_8_scenario_heatmap":   "Heatmap hiệu năng 8 kịch bản",
 }
 
 
@@ -553,18 +587,19 @@ def save_all_charts(
     figures = {
         "rf_1_mae_comparison":     plot_mae_comparison(results, best_res),
         "rf_2_r2_comparison":      plot_r2_comparison(results, best_res),
-        "rf_3_actual_vs_predicted":plot_actual_vs_predicted(
+        "rf_3_mape_comparison":    plot_mape_comparison(results, best_res),
+        "rf_4_actual_vs_predicted":plot_actual_vs_predicted(
                                        y_test, best_res["y_pred"],
                                        best_res["scenario"]["name"],
-                                       best_res["mae"], best_res["r2"]),
-        "rf_4_feature_importance": plot_feature_importance(
+                                       best_res["mae"], best_res["mape"], best_res["r2"]),
+        "rf_5_feature_importance": plot_feature_importance(
                                        best_res["model"],
                                        best_res["scenario"]["name"]),
-        "rf_5_residuals":          plot_residuals(
+        "rf_6_residuals":          plot_residuals(
                                        y_test, best_res["y_pred"],
                                        best_res["scenario"]["name"]),
-        "rf_6_learning_curve":     plot_learning_curve(df),
-        "rf_7_scenario_heatmap":   plot_scenario_heatmap(results),
+        "rf_7_learning_curve":     plot_learning_curve(df),
+        "rf_8_scenario_heatmap":   plot_scenario_heatmap(results),
     }
 
     saved_paths: dict[str, str] = {}
@@ -613,7 +648,7 @@ if __name__ == "__main__":
     sys.path.insert(0, str(root))
 
     import pandas as pd
-    from modules.random_forest_engine import run_all_scenarios
+    from modules.model_engine import run_all_scenarios
 
     print("=" * 60)
     print("  RF Charts Generator – DSS Laptop Project")
