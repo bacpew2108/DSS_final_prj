@@ -13,7 +13,7 @@ from modules.topsis_engine import (
 )
 from modules.charts import plot_radar_chart
 # Import Random Forest engine (dùng để dự đoán giá ngầm trong TOPSIS)
-from modules.random_forest_engine import predict_price
+from modules.model_engine import predict_price
 
 
 # --- LOAD MÔ HÌNH ĐÃ HUẤN LUYỆN (INFERENCE) ---

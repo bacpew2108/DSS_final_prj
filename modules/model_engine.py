@@ -17,8 +17,9 @@ import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.metrics import mean_absolute_error, r2_score, mean_absolute_percentage_error
+from xgboost import XGBRegressor
+from lightgbm import LGBMRegressor
 
 
 # ---------------------------------------------------------------------------
@@ -71,20 +72,17 @@ HYPERPARAMETER_SCENARIOS: list[dict] = [
     },
     {
         "id": 7,
-        "name": "Combo Tối ưu 1 (100 cây, depth=10)",
-        "description": "Cân bằng giữa tốc độ và độ chính xác",
-        "params": {"n_estimators": 100, "max_depth": 10, "random_state": 42},
+        "name": "XGBoost (State-of-the-Art)",
+        "description": "Mô hình XGBoost mạnh mẽ, tối ưu hóa",
+        "model_class": XGBRegressor,
+        "params": {"n_estimators": 200, "learning_rate": 0.05, "max_depth": 6, "random_state": 42},
     },
     {
         "id": 8,
-        "name": "Combo Tối ưu 2 (200 cây, depth=15, split=5)",
-        "description": "Mô hình cân bằng toàn diện — ứng cử viên vô địch",
-        "params": {
-            "n_estimators": 200,
-            "max_depth": 15,
-            "min_samples_split": 5,
-            "random_state": 42,
-        },
+        "name": "LightGBM (State-of-the-Art)",
+        "description": "Mô hình LightGBM tốc độ cao, hiệu quả",
+        "model_class": LGBMRegressor,
+        "params": {"n_estimators": 200, "learning_rate": 0.05, "max_depth": 6, "random_state": 42, "verbose": -1},
     },
 ]
 
@@ -101,7 +99,7 @@ def prepare_rf_data(df: pd.DataFrame):
     data = df[needed].dropna()
 
     # price đã là Triệu VNĐ (load_data chia /1_000_000)
-    X = data[FEATURE_COLS].values
+    X = data[FEATURE_COLS]
     y = data[TARGET_COL].values
     return X, y
 
@@ -139,7 +137,8 @@ def run_all_scenarios(df: pd.DataFrame, test_size: float = 0.2) -> dict:
     print("-" * 75)
 
     for scenario in HYPERPARAMETER_SCENARIOS:
-        model = RandomForestRegressor(**scenario["params"])
+        model_class = scenario.get("model_class", RandomForestRegressor)
+        model = model_class(**scenario["params"])
         model.fit(X_train, y_train)
 
         y_pred = model.predict(X_test)
@@ -149,7 +148,7 @@ def run_all_scenarios(df: pd.DataFrame, test_size: float = 0.2) -> dict:
         
         # Cross-validation MAE (5-fold)
         cv_neg_mae = cross_val_score(
-            RandomForestRegressor(**scenario["params"]),
+            model_class(**scenario["params"]),
             X, y, cv=5, scoring="neg_mean_absolute_error"
         )
         cv_mae_mean = float(-cv_neg_mae.mean())
@@ -173,17 +172,16 @@ def run_all_scenarios(df: pd.DataFrame, test_size: float = 0.2) -> dict:
             best_mae    = mae
             best_result = res
 
-    # Cập nhật dòng in ra màn hình cho đẹp:
-    print(f"  #{scenario['id']:>2} {scenario['name']:<42} MAE={mae:.2f}M  MAPE={mape*100:.2f}%  R²={r2*100:.1f}%")
+
 
     # Leaderboard (sort theo MAE tăng dần)
     summary_rows = []
     for r in results:
         sc = r["scenario"]
         summary_rows.append({
-            "Biến thể Random Forest": f"#{sc['id']} {sc['name']}",
-            "n_estimators": r["model"].n_estimators,
-            "max_depth": str(r["model"].max_depth) if r["model"].max_depth else "∞",
+            "Biến thể Mô hình": f"#{sc['id']} {sc['name']}",
+            "n_estimators": getattr(r["model"], "n_estimators", "N/A"),
+            "max_depth": str(getattr(r["model"], "max_depth", None)) if getattr(r["model"], "max_depth", None) else "∞",
             "MAE (Triệu VNĐ)": round(r["mae"], 3),
             "MAPE (%)": round(r["mape"] * 100, 2),
             "R² (%)": round(r["r2"] * 100, 2),
@@ -219,7 +217,7 @@ def predict_price(model, cpu_point: float, gpu_point: float,
         "price_M"   : float — giá dự đoán (Triệu VNĐ)
         "segment"   : str   — phân khúc tương ứng
     """
-    X_new = np.array([[cpu_point, gpu_point, ram_gb, storage_gb, weight_kg]])
+    X_new = pd.DataFrame([[cpu_point, gpu_point, ram_gb, storage_gb, weight_kg]], columns=FEATURE_COLS)
     price = float(model.predict(X_new)[0])
     price = max(0.0, round(price, 2))
 

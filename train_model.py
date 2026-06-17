@@ -2,7 +2,7 @@ import os
 import joblib
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
-from modules.random_forest_engine import FEATURE_COLS, TARGET_COL, HYPERPARAMETER_SCENARIOS
+from modules.model_engine import FEATURE_COLS, TARGET_COL, HYPERPARAMETER_SCENARIOS, run_all_scenarios
 
 def train_and_save_model():
     print("⏳ Đang đọc dữ liệu...")
@@ -19,11 +19,18 @@ def train_and_save_model():
     X = data[FEATURE_COLS].values
     y = data[TARGET_COL].values
 
-    # Chọn cấu hình tốt nhất (Combo Tối ưu 2 - Index 7 trong list của bạn)
-    best_params = HYPERPARAMETER_SCENARIOS[7]["params"]
+    # Đánh giá tất cả kịch bản để tìm model tốt nhất
+    print("🔍 Đang đánh giá 8 mô hình để tìm ra mô hình tốt nhất...\n")
+    output = run_all_scenarios(df)
     
-    print(f"🌲 Đang huấn luyện Random Forest với tham số: {best_params}...")
-    model = RandomForestRegressor(**best_params)
+    best_scenario = output["best_result"]["scenario"]
+    best_params = best_scenario["params"]
+    model_class = best_scenario.get("model_class", RandomForestRegressor)
+
+    print(f"\n🏆 Mô hình tốt nhất tìm được: {best_scenario['name']}")
+    print(f"🌲 Đang huấn luyện lại trên toàn bộ dữ liệu với tham số: {best_params}...")
+    
+    model = model_class(**best_params)
     model.fit(X, y)
     
     # Tạo thư mục models nếu chưa có

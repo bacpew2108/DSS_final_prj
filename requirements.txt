@@ -8,4 +8,6 @@ networkx
 scikit-learn
 matplotlib
 seaborn
-joblib 
+joblib
+xgboost
+lightgbm
