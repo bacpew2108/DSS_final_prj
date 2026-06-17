@@ -82,7 +82,7 @@ min_storage = 0 if storage_option == "Tất cả" else storage_option
 brands_list = df['brand'].dropna().unique().tolist()
 selected_brands = st.sidebar.multiselect("Thương hiệu ưu tiên (Bỏ trống để tìm tất cả)", brands_list)
 
-top_n_results = st.sidebar.selectbox("Số lượng laptop đưa ra (Top N)", [1, 2, 3, 4, 5, 7, 10], index=2)
+top_n_results = st.sidebar.selectbox("Số lượng laptop đưa ra (Top N)", list(range(1, 11)), index=2)
 
 # --- LỚP NGHIỆP VỤ: 3 CHẾ ĐỘ VẬN HÀNH (MODES) ---
 tab1, tab2, tab3 = st.tabs([
@@ -399,5 +399,5 @@ if weights_array is not None:
                 st.markdown("---")
 
             st.subheader("Biểu Đồ Phân Tích Cấu Hình")
-            fig = plot_radar_chart(top3_df, segment, name_col='Tên_Máy')
+            fig = plot_radar_chart(top3_df, segment, name_col='Tên_Máy', top_n=top_n_results)
             st.plotly_chart(fig, use_container_width=True)
