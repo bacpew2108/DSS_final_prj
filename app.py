@@ -86,14 +86,6 @@ with col_btn:
 
 # (Phần code dưới giữ nguyên)
 # --- LỚP DỮ LIỆU (DATA LAYER) ---
-
-# --- LỚP GIAO DIỆN: RÀNG BUỘC CỨNG (HARD FILTERS) ---
-st.sidebar.header("1. Lọc Ràng Buộc Cứng")
-
-# 3. Thêm một nút bấm trên Sidebar để người dùng có thể chủ động mở lại Popup
-st.sidebar.button("Hướng Dẫn", on_click=tutorial_dialog, use_container_width=True)
-st.sidebar.markdown("---")
-# --- LỚP DỮ LIỆU (DATA LAYER) ---
 @st.cache_data
 def load_data():
     df = pd.read_csv("data/laptops_dataset_cleaned.csv")

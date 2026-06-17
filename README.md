@@ -1,4 +1,4 @@
-# Hệ Thống Hỗ Trợ Quyết Định Cấu Hình Laptop (DSS Final Project)
+# Hệ Thống Hỗ Trợ Quyết Định Mua Laptop (DSS Final Project)
 
 Dự án này là một Hệ Thống Hỗ Trợ Quyết Định (DSS) nhằm giúp người dùng lựa chọn cấu hình laptop phù hợp với nhu cầu. Hệ thống tích hợp các phương pháp xử lý dữ liệu (ETL), mô hình học máy (Machine Learning) như Random Forest để dự đoán giá, và phương pháp ra quyết định đa tiêu chí (TOPSIS/AHP) để gợi ý laptop tốt nhất.
 
