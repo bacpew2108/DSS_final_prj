@@ -19,21 +19,21 @@ from modules.model_engine import predict_price
 
 # --- LOAD MÔ HÌNH ĐÃ HUẤN LUYỆN (INFERENCE) ---
 @st.cache_resource
-def load_rf_model():
+def load_best_model():
     """
-    Load mô hình Random Forest đã được train sẵn từ ổ cứng.
+    Load mô hình tốt nhất (Random Forest, XGBoost, LightGBM...) đã được train sẵn.
     Siêu nhanh, không tốn RAM và CPU để train lại.
     """
-    model_path = "models/rf_best_model.joblib"
+    model_path = "models/best_model.joblib"
     try:
         model = joblib.load(model_path)
         return model
     except FileNotFoundError:
-        st.error(f"❌ Không tìm thấy model tại `{model_path}`. Vui lòng chạy file `train_model.py` trước!")
+        st.error(f"❌ Không tìm thấy model tại `{model_path}`. Vui lòng chạy file `python train_model.py` trước!")
         st.stop()
 
 # Gọi hàm load model
-rf_model_bg = load_rf_model()
+best_model_bg = load_best_model()
 
 # --- CẤU HÌNH TRANG ---
 st.set_page_config(page_title="Hệ Hỗ Trợ Ra Quyết Định Mua Laptop", layout="wide")
@@ -273,9 +273,9 @@ if weights_array is not None:
             # Duyệt qua từng laptop trong Top N để render giao diện
             for rank, (idx, row) in enumerate(top3_df.iterrows(), start=1):
 
-                # ── Chạy ngầm RF để dự đoán giá ──────────────────────────
+                # ── Chạy ngầm AI để dự đoán giá ──────────────────────────
                 rf_pred = predict_price(
-                    rf_model_bg,
+                    best_model_bg,
                     cpu_point  = float(row.get('cpu_point',  0)),
                     gpu_point  = float(row.get('gpu_point',  0)),
                     ram_gb     = float(row.get('ram_capacity', 0)),
