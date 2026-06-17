@@ -37,8 +37,62 @@ best_model_bg = load_best_model()
 
 # --- CẤU HÌNH TRANG ---
 st.set_page_config(page_title="Hệ Hỗ Trợ Ra Quyết Định Mua Laptop", layout="wide")
-st.title("Hệ Thống Tư Vấn Laptop Đa Tiêu Chí")
 
+# --- HỘP THOẠI HƯỚNG DẪN (POPUP/MODAL) ---
+@st.dialog("Hướng Dẫn Sử Dụng", width="large")
+def tutorial_dialog():
+    st.markdown("""
+    Hệ thống giúp người dùng tìm ra chiếc laptop phù hợp nhất bằng cách kết hợp thuật toán ra quyết định đa tiêu chí (TOPSIS, AHP) và mô hình học máy (Random Forest) để thẩm định giá.
+
+    **1. Lọc yêu cầu cơ bản (Cột bên trái)**
+    Thiết lập các yêu cầu tối thiểu như mức giá, RAM hay dung lượng ổ cứng. Các máy không đạt tiêu chuẩn sẽ bị loại bỏ trước khi đưa vào thuật toán để tối ưu tốc độ xử lý.
+
+    **2. Chọn chế độ tư vấn (3 Tab ở màn hình chính)**
+    - **Chế độ 1 (Nhanh):** Phù hợp nếu người dùng chưa nắm rõ thông số kỹ thuật. Chỉ cần chọn nhóm nhu cầu, hệ thống sẽ áp dụng bộ trọng số đã được thiết lập sẵn.
+    - **Chế độ 2 (Tùy chỉnh):** Sử dụng thanh trượt (1-10) để định lượng yếu tố nào quan trọng hơn. Điểm càng cao, hệ thống càng ưu tiên thông số đó khi xếp hạng.
+    - **Chế độ 3 (Chuyên sâu):** Sử dụng ma trận AHP để so sánh trực tiếp từng cặp tiêu chí (Ví dụ: Giá vs RAM). Kéo thanh trượt về bên nào thì bên đó quan trọng hơn. Hệ thống sẽ tự động tính toán Tỷ số nhất quán (CR) để đảm bảo các lựa chọn không bị mâu thuẫn logic.
+
+    **3. Đọc kết quả và Đánh giá rủi ro về giá**
+    Sau khi xếp hạng các máy dựa trên **Độ phù hợp (%)**, mô hình AI sẽ ước tính giá trị thực của phần cứng và so sánh với giá niêm yết của cửa hàng:
+    - **Món hời:** Giá bán rẻ hơn đáng kể (>20%) so với giá trị thực tế của linh kiện. Cấu hình rất tốt trong tầm giá.
+    - **Giá hợp lý:** Giá bán tương xứng với cấu hình phần cứng.
+    - **Bị định giá cao:** Máy đắt hơn so với mặt bằng chung linh kiện. Phần tiền chênh lệch chủ yếu nằm ở giá trị thương hiệu hoặc thiết kế vỏ máy.
+    - **Cảnh báo giá ảo:** Giá bán quá rẻ so với cấu hình (lệch >40%). Cần kiểm tra kỹ tình trạng máy (máy cũ, lỗi) hoặc cẩn trọng với các bài đăng lừa đảo.
+    """)
+    
+    # Nút bấm để tắt Popup
+    if st.button("Đã hiểu", type="primary", use_container_width=True):
+        st.session_state.first_visit = False
+        st.rerun()
+
+# Quản lý trạng thái: Tự động bật Popup ở lần đầu tiên
+if "first_visit" not in st.session_state:
+    st.session_state.first_visit = True
+
+if st.session_state.first_visit:
+    tutorial_dialog()
+
+# --- BỐ CỤC HEADER (TIÊU ĐỀ & NÚT HƯỚNG DẪN) ---
+# Chia cột tỷ lệ 8.5 : 1.5 để đẩy nút sang sát mép phải
+col_title, col_btn = st.columns([8.5, 1.5])
+
+with col_title:
+    st.title("Hệ Thống Tư Vấn Laptop Đa Tiêu Chí")
+
+with col_btn:
+    st.write("") # Dòng trống để đẩy nút xuống cho ngang hàng với tiêu đề
+    if st.button("📖 Hướng dẫn", use_container_width=True):
+        tutorial_dialog()
+
+# (Phần code dưới giữ nguyên)
+# --- LỚP DỮ LIỆU (DATA LAYER) ---
+
+# --- LỚP GIAO DIỆN: RÀNG BUỘC CỨNG (HARD FILTERS) ---
+st.sidebar.header("1. Lọc Ràng Buộc Cứng")
+
+# 3. Thêm một nút bấm trên Sidebar để người dùng có thể chủ động mở lại Popup
+st.sidebar.button("Hướng Dẫn", on_click=tutorial_dialog, use_container_width=True)
+st.sidebar.markdown("---")
 # --- LỚP DỮ LIỆU (DATA LAYER) ---
 @st.cache_data
 def load_data():
