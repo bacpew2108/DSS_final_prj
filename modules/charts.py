@@ -2,7 +2,7 @@ import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
 
-def plot_radar_chart(top_df, segment_name, name_col='product_name', top_n=3):
+def plot_radar_chart(top_df, segment_name, name_col='product_name', top_n=10):
     # ==========================================
     # BỘ KIỂM TRA AN TOÀN (SAFETY CHECK) - CHỐNG SẬP APP
     # ==========================================
@@ -19,8 +19,8 @@ def plot_radar_chart(top_df, segment_name, name_col='product_name', top_n=3):
         )
         return fig
 
-    # Đảm bảo số lượng máy vẽ không vượt quá số lượng máy thực tế và TỐI ĐA chỉ vẽ 5 máy để tránh tràn bộ màu
-    top_n = min(top_n, len(top_df), 5)
+    # Đảm bảo số lượng máy vẽ không vượt quá số lượng máy thực tế và TỐI ĐA chỉ vẽ 10 máy để tránh tràn bộ màu
+    top_n = min(top_n, len(top_df), 10)
     
     # Lấy đúng số lượng máy cần vẽ
     compare_df = top_df.head(top_n).copy()
@@ -72,22 +72,32 @@ def plot_radar_chart(top_df, segment_name, name_col='product_name', top_n=3):
     # KHỞI TẠO VÀ VẼ BIỂU ĐỒ
     fig = go.Figure()
     
-    # BẢNG 5 MÀU TƯƠNG PHẢN ĐẸP (Phục vụ vẽ từ 1 đến 5 máy)
+    # BẢNG 10 MÀU TƯƠNG PHẢN ĐẸP (Phục vụ vẽ từ 1 đến 10 máy)
     fill_colors = [
         'rgba(44, 123, 219, 0.25)',  # Xanh dương (Top 1)
         'rgba(255, 136, 0, 0.25)',   # Cam (Top 2)
         'rgba(38, 166, 91, 0.25)',    # Xanh lá (Top 3)
         'rgba(155, 89, 182, 0.25)',   # Tím (Top 4)
-        'rgba(231, 76, 60, 0.25)'     # Đỏ (Top 5)
+        'rgba(231, 76, 60, 0.25)',    # Đỏ (Top 5)
+        'rgba(23, 165, 137, 0.25)',   # Teal (Top 6)
+        'rgba(241, 196, 15, 0.25)',   # Vàng (Top 7)
+        'rgba(52, 73, 94, 0.25)',     # Navy (Top 8)
+        'rgba(211, 84, 0, 0.25)',     # Cam đậm (Top 9)
+        'rgba(127, 140, 141, 0.25)'   # Xám (Top 10)
     ]
     line_colors = [
         'rgb(44, 123, 219)',
         'rgb(255, 136, 0)',
         'rgb(38, 166, 91)',
         'rgb(155, 89, 182)',
-        'rgb(231, 76, 60)'
+        'rgb(231, 76, 60)',
+        'rgb(23, 165, 137)',
+        'rgb(241, 196, 15)',
+        'rgb(52, 73, 94)',
+        'rgb(211, 84, 0)',
+        'rgb(127, 140, 141)'
     ]
-    ranks = ["Top 1", "Top 2", "Top 3", "Top 4", "Top 5"]
+    ranks = [f"Top {i}" for i in range(1, 11)]
     
     for idx, row in compare_df.reset_index(drop=True).iterrows():
         r_values = norm_df.iloc[idx].values.tolist()

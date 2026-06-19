@@ -147,9 +147,10 @@ def get_weights_mode_2(user_profile, scores_dict):
 # ==========================================
 # CHẾ ĐỘ 3: TOÀN DIỆN (15 SLIDERS - MA TRẬN 6x6)
 # ==========================================
-def get_weights_mode_3(ahp_matrix_6x6, user_profile):
+def get_weights_mode_3(ahp_matrix_6x6):
     """
-    Tính trọng số từ ma trận 6x6 và check CR.
+    Chế độ 3: Tính trọng số từ ma trận 6x6 và check CR.
+    Không cần user_profile vì trọng số sinh ra hoàn toàn từ toán học.
     """
     weights, cr, is_consistent = calculate_ahp_weights_with_cr(ahp_matrix_6x6)
     
