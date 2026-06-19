@@ -1,9 +1,11 @@
 import os
 import joblib
 import pandas as pd
-from sklearn.ensemble import RandomForestRegressor
 
-from modules.model_engine import FEATURE_COLS, TARGET_COL, HYPERPARAMETER_SCENARIOS, run_all_scenarios
+from modules.model_engine import (
+    FEATURE_COLS, TARGET_COL, HYPERPARAMETER_SCENARIOS,
+    run_all_scenarios, _build_model,
+)
 from modules.model_gen_charts import save_all_charts
 
 def train_and_save_model():
@@ -31,13 +33,12 @@ def train_and_save_model():
     save_all_charts(output, df, out_dir="assets")
     
     best_scenario = output["best_result"]["scenario"]
-    best_params = best_scenario["params"]
-    model_class = best_scenario.get("model_class", RandomForestRegressor)
 
     print(f"\n🏆 Mô hình tốt nhất tìm được: {best_scenario['name']}")
-    print(f"🌲 Đang huấn luyện lại trên toàn bộ dữ liệu với tham số: {best_params}...")
+    print(f"🌲 Đang huấn luyện lại trên toàn bộ dữ liệu với tham số: {best_scenario['params']}...")
     
-    model = model_class(**best_params)
+    # Dùng _build_model để tự động wrap Pipeline nếu cần (Ridge, SVR, KNN)
+    model = _build_model(best_scenario)
     model.fit(X, y)
     
     # Tạo thư mục models nếu chưa có
