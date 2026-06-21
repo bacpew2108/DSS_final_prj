@@ -35,7 +35,7 @@ from plotly.subplots import make_subplots
 # ─── Palette trắng / sáng ──────────────────────────────────────────────────────────────────────────────
 _PAPER_BG  = "#ffffff"
 _PLOT_BG   = "#f7f9fc"
-_FONT      = dict(color="#1a202c", family="Inter, sans-serif")
+_FONT      = dict(color="#1a202c", family="Inter, sans-serif", size=20)
 _BLUE      = "#3182ce"
 _GOLD      = "#d69e2e"
 _GREEN     = "#38a169"
@@ -120,7 +120,7 @@ def plot_mae_comparison(results: list[dict], best_result: dict) -> go.Figure:
 
     fig.update_layout(
         **_base_layout(height=460),
-        title=dict(text="📉 So sánh MAE – 8 Biến thể Random Forest", font=dict(size=16)),
+        title=dict(text="📉 So sánh MAE – 8 Biến thể Random Forest", font=dict(size=20)),
         xaxis_title="Kịch bản",
         yaxis_title="MAE (Triệu VNĐ)",
         legend=dict(x=0.01, y=0.99),
@@ -155,7 +155,7 @@ def plot_r2_comparison(results: list[dict], best_result: dict) -> go.Figure:
 
     fig.update_layout(
         **_base_layout(height=400),
-        title=dict(text="📈 Hệ số R² (%) – Khả năng giải thích phương sai giá", font=dict(size=16)),
+        title=dict(text="📈 Hệ số R² (%) – Khả năng giải thích phương sai giá", font=dict(size=20)),
         xaxis_title="Kịch bản",
         yaxis_title="R² (%)",
         yaxis=dict(range=[0, 115]),
@@ -192,7 +192,7 @@ def plot_mape_comparison(results: list[dict], best_result: dict) -> go.Figure:
 
     fig.update_layout(
         **_base_layout(height=400),
-        title=dict(text="📉 Sai số phần trăm tương đối trung bình MAPE (%) – 8 Biến thể", font=dict(size=16)),
+        title=dict(text="📉 Sai số phần trăm tương đối trung bình MAPE (%) – 8 Biến thể", font=dict(size=20)),
         xaxis_title="Kịch bản",
         yaxis_title="MAPE (%)",
         bargap=0.35,
@@ -270,7 +270,7 @@ def plot_actual_vs_predicted(
     title_suffix = f" – {scenario_name}" if scenario_name else ""
     fig.update_layout(
         **_base_layout(height=430),
-        title=dict(text=f"🎯 Actual vs Predicted{title_suffix}", font=dict(size=16)),
+        title=dict(text=f"🎯 Actual vs Predicted{title_suffix}", font=dict(size=20)),
         xaxis_title="Giá thực tế (Triệu VNĐ)",
         yaxis_title="Giá dự đoán (Triệu VNĐ)",
         legend=dict(x=0.01, y=0.99),
@@ -322,7 +322,7 @@ def plot_feature_importance(
     title_suffix = f" – {scenario_name}" if scenario_name else ""
     fig.update_layout(
         **_base_layout(height=380),
-        title=dict(text=f"🌿 Feature Importance{title_suffix}", font=dict(size=16)),
+        title=dict(text=f"🌿 Feature Importance{title_suffix}", font=dict(size=20)),
         xaxis_title="Mức độ quan trọng",
         annotations=[dict(
             x=0.99, y=0.02, xref="paper", yref="paper",
@@ -374,7 +374,7 @@ def plot_residuals(
     title_suffix = f" – {scenario_name}" if scenario_name else ""
     fig.update_layout(
         **_base_layout(height=380),
-        title=dict(text=f"📊 Phân phối Sai số (Residuals){title_suffix}", font=dict(size=16)),
+        title=dict(text=f"📊 Phân phối Sai số (Residuals){title_suffix}", font=dict(size=20)),
         xaxis_title="Sai số dự đoán (Triệu VNĐ)",
         yaxis_title="Số lượng laptop",
         showlegend=False,
@@ -445,7 +445,7 @@ def plot_learning_curve(df, test_size: float = 0.2) -> go.Figure:
 
     fig.update_layout(
         **_base_layout(height=420),
-        title=dict(text="📈 Learning Curve – MAE theo số lượng cây", font=dict(size=16)),
+        title=dict(text="📈 Learning Curve – MAE theo số lượng cây", font=dict(size=20)),
         xaxis_title="Số lượng cây (n_estimators)",
         yaxis_title="MAE (Triệu VNĐ)",
         legend=dict(x=0.7, y=0.95),
@@ -465,7 +465,16 @@ def plot_scenario_heatmap(results: list[dict]) -> go.Figure:
 
     Metrics: MAE (Test), CV MAE, R²
     """
-    sc_names = [f"#{r['scenario']['id']} {r['scenario']['name']}" for r in results]
+    def _format_sc_name(r):
+        sid  = r['scenario']['id']
+        name = r['scenario']['name']
+        # Kịch bản #5,6: tách phần tham số ra dòng riêng
+        if (sid == 5 or sid == 6) and '(' in name:
+            base, params = name.split('(', 1)
+            return f"#{sid} {base.strip()}<br>({params}"
+        return f"#{sid} {name}"
+
+    sc_names = [_format_sc_name(r) for r in results]
     metrics  = ["MAE (Test)", "MAPE (%)", "R² (%)"]
 
     # Chuẩn hóa min-max mỗi metric về [0, 1] để so sánh trên cùng thang
@@ -503,8 +512,8 @@ def plot_scenario_heatmap(results: list[dict]) -> go.Figure:
         x=metrics,
         y=sc_names,
         text=text,
-        texttemplate="%{text}",
-        textfont=dict(size=11, color="white"),
+        texttemplate="<b>%{text}</b>",
+        textfont=dict(size=25, color="white"),
         colorscale="RdYlGn",
         showscale=True,
         colorbar=dict(
@@ -517,10 +526,10 @@ def plot_scenario_heatmap(results: list[dict]) -> go.Figure:
     ))
 
     fig.update_layout(
-        **_base_layout(height=420),
+        **_base_layout(height=480),
         title=dict(
             text="🗺️ Heatmap Hiệu năng – 8 Kịch bản × 3 Metrics (chuẩn hóa)",
-            font=dict(size=16),
+            font=dict(size=20),
         ),
         xaxis=dict(side="top"),
         margin=dict(l=260),
